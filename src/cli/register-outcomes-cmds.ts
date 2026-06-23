@@ -140,6 +140,30 @@ program
     })();
   });
 
+program
+  .command('evidence-ladder <dimId>')
+  .description('Author a clean, integrity-passing push-tier evidence ladder BY CONSTRUCTION (council 2026-06-23). Given a wired callsite + >=3 distinct product demonstrations, it reaches a court-ready T7 via real execution or names the precise violation.')
+  .requiredOption('--config <path>', 'JSON config: { callsite, rungs:[{command,artifact,description}] }')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((dimId: string, opts) => {
+    void (async () => {
+      try {
+        const { runEvidenceLadderCli } = await import('./commands/evidence-ladder.js');
+        await runEvidenceLadderCli({
+          dimId,
+          config: opts.config as string,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'evidence-ladder');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 const frontierCmd = program
   .command('frontier-spec')
   .description('Define + track the per-dim "what would 9.0 mean?" contract (frontier_spec): the real-user-path run, observable artifact, and competitor to match. Frozen before implementation so the target cannot move.');
