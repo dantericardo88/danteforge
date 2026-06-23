@@ -15,6 +15,7 @@ import { isTestSuiteCommand } from '../matrix/engines/outcome-quality.js';
 import type { DimensionRubricLevel } from '../matrix/types/dimension-graph.js';
 import { checkHarvestProvenance, type HarvestedSignal } from './harvested-bar.js';
 import { isOutcomePassing, makeEvidenceKey, type Outcome, type OutcomeEvidence } from '../matrix/types/outcome.js';
+import { attributionCeiling, type AddressedActor } from './attribution-gate.js';
 
 export type FrontierSpecStatus = 'draft' | 'frozen' | 'validated' | 'stale';
 
@@ -122,6 +123,14 @@ export interface FrontierSpec {
   /** The court receipt authorizing `status:'validated'`. Required for the frontier gate to honor a 9.0
    *  (court-audit #1). Only the frontier-review court writes it. */
   validated_by?: FrontierValidationReceipt;
+  /** ATTRIBUTION (council unanimous 2026-06-23): WHO the harvested demand is addressed to — classified
+   *  deterministically from the demand text at seed time (host/server/cli/library/agent). Non-gameable: the
+   *  builder cannot soften it because it derives from the requester's own words. */
+  addressed_actor?: AddressedActor;
+  /** The actor role DanteForge plays for this dimension. When a demand-grounded bar has
+   *  addressed_actor != artifact_actor, the achievable score is structurally capped at 8.5 (partial
+   *  satisfaction — the demand was filed against a different role than the artifact plays), never a 9.0. */
+  artifact_actor?: AddressedActor;
   leader_target: {
     competitor: string;
     competitor_type?: 'closed-source' | 'oss';
@@ -411,8 +420,16 @@ export function applyFrontierGate(score: number, dim: unknown): { score: number;
     // Demand validates "wanted + satisfied", NOT "beats Kiro" — so it must not mint a competitive 9.5.
     const ref = (spec.leader_target as { evidence_ref?: string } | undefined)?.evidence_ref ?? '';
     const isDemandGrounded = /(?:^|;)\s*harvest-demand:/.test(ref);
-    const cap = isDemandGrounded ? 9.0 : 9.5;
-    return { score: Math.min(score, cap), capped: score > cap };
+    if (isDemandGrounded) {
+      // ATTRIBUTION TEETH (council unanimous 2026-06-23): a demand-grounded 9.0 requires the demand's ADDRESSED
+      // actor (classified deterministically from the demand text at seed time) to MATCH the artifact's actor
+      // role. A host-filed demand satisfied by a server artifact is only PARTIAL satisfaction → structurally
+      // capped at 8.5, never an autonomous 9.0. Unknown on either side defers to the court (no structural cap).
+      const att = attributionCeiling(spec.addressed_actor ?? 'unknown', spec.artifact_actor ?? 'unknown');
+      const demandCap = att.capped ? att.ceiling : 9.0;
+      return { score: Math.min(score, demandCap), capped: score > demandCap };
+    }
+    return { score: Math.min(score, 9.5), capped: score > 9.5 };
   }
   return { score: FRONTIER_GATE_THRESHOLD, capped: true };
 }
