@@ -14,6 +14,8 @@
 // self-certification hole the derived-score + receipt-ceiling lattice exists to close (a code-only artifact
 // would print "10"). See [[project_build_ceiling_vs_external_anchor]].
 
+import { TIER_SCORE_CAPS } from '../matrix/types/capability-test.js';
+
 // THREE axes (council 2026-06-23, operator's frontier-definition fix): the FRONTIER splits into two genuinely
 // different achievements that we were wrongly conflating. The ENGINEERING frontier (8.5–9.0) is the best version
 // of the project ITSELF — validated by real external DEMAND (Reddit/X/GitHub feature requests) that the artifact
@@ -36,28 +38,30 @@ export interface ScoreBand {
   nextAnchor?: string;
 }
 
-/** The terminal ceiling of the BUILD axis. A build that reaches this has succeeded. */
-export const BUILD_CEILING = 8.0;
+/** The terminal ceiling of the BUILD axis. A build that reaches this has succeeded.
+ *  Single-sourced from the canonical tier cap (T5 = 8.0) so it can never drift from the lattice. */
+export const BUILD_CEILING = TIER_SCORE_CAPS.T5;
 
 /**
- * Classify a derived score into its two-axis band. Thresholds mirror TIER_SCORE_CAPS exactly
- * (T4=7.0, T5=8.0, T6=8.5, T7=9.0, T8=9.5) — this is a labeling overlay, not a re-scoring.
+ * Classify a derived score into its two-axis band. Every threshold REFERENCES TIER_SCORE_CAPS directly
+ * (single-sourced — structurally cannot drift from the canonical caps); this is a labeling overlay, not a
+ * re-scoring. "Relabel, never renumber" is now enforced by the compiler, not by a comment.
  */
 export function scoreBand(score: number): ScoreBand {
-  if (score >= 9.5) {
+  if (score >= TIER_SCORE_CAPS.T8) {
     return {
       axis: 'competitive', label: 'COMPETITIVE FRONTIER · sustained', isBuildTerminal: false,
       meaning: 'Repeated, fresh COMPETITIVE superiority vs the field — a dated benchmark win + competitor-parity court, sustained. Consciously funded; not autonomously reachable. The honest "we beat the field" claim.',
     };
   }
-  if (score >= 9.0) {
+  if (score >= TIER_SCORE_CAPS.T7) {
     return {
       axis: 'engineering', label: 'ENGINEERING FRONTIER · demand-satisfied', isBuildTerminal: false,
       nextAnchor: 'beat a named competitor on a dated external benchmark → COMPETITIVE FRONTIER (9.5+), a separately-funded achievement',
       meaning: 'The artifact demonstrably SATISFIES a frozen, signed cluster of real external DEMAND (GitHub/Reddit/X feature requests), independently court-confirmed — the best version of what real users actually want. Autonomously reachable; this is the engineering/technological frontier, NOT a claim of beating competitors.',
     };
   }
-  if (score >= 8.5) {
+  if (score >= TIER_SCORE_CAPS.T6) {
     return {
       axis: 'engineering', label: 'ENGINEERING FRONTIER · demand-anchored', isBuildTerminal: false,
       nextAnchor: 'prove the artifact SATISFIES the demand via the demand-satisfaction court → demand-satisfied (9.0)',
@@ -71,14 +75,14 @@ export function scoreBand(score: number): ScoreBand {
       meaning: 'Production-grade: wired into a real production path AND smoke-passing on real input. The build has SUCCEEDED — this is its terminal "done". The ENGINEERING frontier (8.5–9.0) is the next, autonomously-reachable step: bind real harvested demand and prove the artifact satisfies it.',
     };
   }
-  if (score >= 7.0) {
+  if (score >= TIER_SCORE_CAPS.T4) {
     return {
       axis: 'build', label: 'WIRED', isBuildTerminal: false,
       nextAnchor: 'a smoke run on real input → BUILD-COMPLETE (8.0)',
       meaning: 'Invoked from a real production code path — no longer an orphan.',
     };
   }
-  if (score >= 5.0) {
+  if (score >= TIER_SCORE_CAPS.T2) {
     return {
       axis: 'build', label: 'MODULE', isBuildTerminal: false,
       nextAnchor: 'wire it into a production callsite → WIRED (7.0)',
