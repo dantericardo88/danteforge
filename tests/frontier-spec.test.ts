@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import {
   scaffoldFrontierSpec, seedLeaderTargetFromLadder, checkFrontierSpec, computeSpecHash, effectiveStatus,
   looksLikeProductRun, resolveRunCommand, signValidation, verifyValidation,
-  signBuilderProvenance, verifyBuilderProvenance, type FrontierSpec,
+  signBuilderProvenance, verifyBuilderProvenance, signClaim, verifyClaim, type FrontierSpec,
 } from '../src/core/frontier-spec.js';
 import { completeFrontierSpec } from '../src/core/frontier-spec-complete.js';
 import { runFrontierSpec } from '../src/cli/commands/frontier-spec.js';
@@ -651,5 +651,13 @@ describe('builder-provenance token — peer-review judging without re-opening se
     const tok = signBuilderProvenance('functionality', ['codex', 'claude-code']);
     assert.equal(verifyBuilderProvenance('functionality', ['claude-code', 'codex'], tok), true, 'sorted internally');
     assert.equal(verifyBuilderProvenance('functionality', [], signBuilderProvenance('functionality', [])), false);
+  });
+
+  test('signClaim/verifyClaim — a graded-evaluator gap check is non-gameable (no kernel secret = no valid sig)', () => {
+    const sig = signClaim('mao_agent_benchmark');
+    assert.equal(verifyClaim('mao_agent_benchmark', sig), true, 'a real kernel-signed claim verifies');
+    assert.equal(verifyClaim('mao_agent_benchmark', undefined), false, 'a touched/empty file (no sig) never verifies');
+    assert.equal(verifyClaim('mao_agent_benchmark', 'deadbeefdeadbeefdeadbeefdeadbeef'), false, 'a forged sig fails');
+    assert.equal(verifyClaim('mao_head_to_head', sig), false, 'a claim is bound to its name — no cross-reuse');
   });
 });

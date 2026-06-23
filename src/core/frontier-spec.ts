@@ -100,6 +100,18 @@ export function verifyBuilderProvenance(dimId: string, builders: string[], token
   return token === signBuilderProvenance(dimId, builders);
 }
 
+/** Sign/verify a generic KERNEL claim. Graded evaluators use this to make a "frontier capability achieved"
+ *  check NON-GAMEABLE: a builder cannot raise the continuous score by `touch`-ing a file, only by producing a
+ *  receipt the KERNEL signed (e.g. after a real benchmark run on the legitimate path). Same trust model as the
+ *  other kernel signatures — an agent has no kernel secret, so a file it writes by itself never verifies. */
+export function signClaim(claim: string): string {
+  return createHmac('sha256', kernelSecret()).update(`frontier-claim|${claim}`).digest('hex').slice(0, 32);
+}
+
+export function verifyClaim(claim: string, sig: string | undefined): boolean {
+  return !!sig && sig === signClaim(claim);
+}
+
 export interface FrontierSpec {
   version: number;
   target_score: number;

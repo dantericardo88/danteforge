@@ -354,6 +354,32 @@ program
   });
 
 program
+  .command('climb <dimId>')
+  .description('Run the AIDE-style graded CLIMB loop: dispatch a builder toward the dim\'s FAILING capabilities, re-evaluate the continuous combined_score, keep only improving cycles, until the target. The autonomous build loop that finally drives on the continuous evaluator (not the binary capability_test). Requires the dim to declare a `graded_evaluator`.')
+  .option('--target <n>', 'Frontier target in [0,1] (default 0.9)')
+  .option('--max-cycles <n>', 'Max climb cycles (default 3)')
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory')
+  .action((dimId: string, opts) => {
+    void (async () => {
+      try {
+        const { runClimbCli } = await import('./commands/climb.js');
+        const r = await runClimbCli({
+          dimId,
+          target: opts.target ? parseFloat(opts.target as string) : undefined,
+          maxCycles: opts.maxCycles ? parseInt(opts.maxCycles as string, 10) : undefined,
+          json: opts.json as boolean | undefined, cwd: opts.cwd as string | undefined,
+        });
+        if ('ran' in r && r.ran === false) process.exitCode = 1;
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'climb');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('session-record <dimId>')
   .description('Produce real-user-path evidence by running the REAL product on a realistic input. The honest path to 9.0 — captures a genuine product run + observable artifact and emits a real-user-path outcome.')
   .requiredOption('--run <command>', 'The real product command to execute (NOT a test runner), e.g. "node dist/index.js forge --project fixtures/sample"')

@@ -8,12 +8,23 @@
 // (A binary capability_test would have read 1.0/pass here and dispatched no builder — the bug we are fixing.)
 
 import fs from 'node:fs';
-import { signBuilderProvenance, verifyBuilderProvenance } from '../src/core/frontier-spec.js';
+import { signBuilderProvenance, verifyBuilderProvenance, verifyClaim } from '../src/core/frontier-spec.js';
 import { computeExcludedJudges } from '../src/cli/commands/frontier-review.js';
 import type { CouncilMemberId } from '../src/cli/commands/council.js';
 
 const ROSTER = [{ id: 'codex' as CouncilMemberId }, { id: 'claude-code' as CouncilMemberId }, { id: 'grok-build' as CouncilMemberId, judgeOnly: true }];
 const tok = signBuilderProvenance('functionality', ['codex']);
+
+/** A frontier-gap check is satisfied ONLY by a KERNEL-SIGNED receipt (council 2026-06-22, Claude's #1 fix):
+ *  a builder cannot raise the score by `touch`-ing a file — it must produce a receipt the kernel signed after a
+ *  REAL run. `touch foo.json` writes no valid signature, so the check stays honestly false. This is the
+ *  anti-gaming property the old `fs.existsSync` checks lacked; the deeper version is the court-as-RULER (CH-063). */
+function signedFrontierClaim(claim: string): boolean {
+  try {
+    const r = JSON.parse(fs.readFileSync(`.danteforge/frontier-receipts/${claim}.json`, 'utf8')) as { claim?: string; sig?: string };
+    return r.claim === claim && verifyClaim(claim, r.sig);
+  } catch { return false; }
+}
 
 const checks: Array<[string, boolean]> = [
   // HAVE — genuinely-novel, verified capabilities (real function calls):
@@ -21,10 +32,11 @@ const checks: Array<[string, boolean]> = [
   ['builder_provenance_round_trips', verifyBuilderProvenance('functionality', ['codex'], tok)],
   ['forged_token_holds_the_floor', !verifyBuilderProvenance('functionality', ['codex'], 'deadbeefdeadbeefdeadbeefdeadbeef')],
   ['token_is_dimension_bound', !verifyBuilderProvenance('security', ['codex'], tok)],
-  // FRONTIER GAP — honest bar versus the named competitors; these FAIL today and are the gradient to climb:
-  ['runnable_agent_benchmark_receipt_vs_competitors', fs.existsSync('.danteforge/benchmarks/multi_agent_orchestration.json')],
-  ['three_plus_independent_judge_vendors_live', false], // CH-061: only grok is a reliable judge-only vendor
-  ['published_head_to_head_vs_crewai_autogen_langgraph', fs.existsSync('docs/COMPARISON_MULTI_AGENT.md')],
+  // FRONTIER GAP — honest bar versus the named competitors; NON-GAMEABLE (each needs a kernel-signed receipt),
+  // and all FAIL today — that gap is the gradient the climb loop builds toward closing:
+  ['runnable_agent_benchmark_receipt_vs_competitors', signedFrontierClaim('mao_agent_benchmark')],
+  ['three_plus_independent_judge_vendors_live', signedFrontierClaim('mao_three_judge_vendors')],
+  ['published_head_to_head_vs_crewai_autogen_langgraph', signedFrontierClaim('mao_head_to_head')],
 ];
 
 const passed = checks.filter(([, ok]) => ok).length;
