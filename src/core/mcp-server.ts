@@ -17,6 +17,7 @@ import { getEconomizedArtifactForContext } from './context-economy/runtime.js';
 import type { ArtifactType } from './context-economy/artifact-compressor.js';
 import { TOOL_DEFINITIONS } from './mcp-tool-definitions.js';
 import { DANTEFORGE_MCP_INSTRUCTIONS } from './mcp-server-instructions.js';
+import { toStructuredError, type McpStructuredError } from './mcp-error.js';
 export { TOOL_DEFINITIONS } from './mcp-tool-definitions.js';
 import {
   handleAdoptionQueue,
@@ -71,9 +72,12 @@ export function jsonResult(data: unknown): ToolResult {
   };
 }
 
-export function errorResult(message: string): ToolResult {
+export function errorResult(message: string | McpStructuredError): ToolResult {
+  const e = toStructuredError(message);
+  // Backward-compatible: `error` stays the human string (existing callers check error.includes(...)); the
+  // structured code/param/hint/retriable are emitted ALONGSIDE for hosts that can handle errors programmatically.
   return {
-    content: [{ type: 'text', text: JSON.stringify({ error: message }, null, 2) }],
+    content: [{ type: 'text', text: JSON.stringify({ error: e.message, code: e.code, param: e.param, hint: e.hint, retriable: e.retriable }, null, 2) }],
     isError: true,
   };
 }
