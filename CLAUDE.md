@@ -8,7 +8,7 @@ DanteForge is an agentic development CLI (v0.5.0) that fuses battle-tested patte
 
 ```bash
 npm ci                  # deterministic install
-npm run verify          # typecheck + lint + anti-stub + smoke suite (~6s, 172 tests)
+npm run verify          # typecheck + lint + anti-stub + smoke suite (~6s, 839 tests)
 npm run verify:full     # typecheck + lint + anti-stub + full suite (slow, may stall)
 npm run build           # tsup -> dist/index.js (single ESM bundle)
 npm run test:smoke      # smoke + anti-stub + matrix-golden-flow + all council tests (~6s)
@@ -19,7 +19,7 @@ npm run lint:fix        # eslint --fix
 ```
 
 > **Test suite note:** `npm run test` runs 680+ test files across multiple lanes and will stall
-> the terminal on Windows. Always use `npm run test:smoke` (172 tests, ~6s) or specific test
+> the terminal on Windows. Always use `npm run test:smoke` (839 tests, ~6s) or specific test
 > files: `npx tsx --test tests/specific.test.ts`. The `verify` script uses `test:smoke`.
 
 ## First time? Run `danteforge flow`
