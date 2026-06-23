@@ -295,7 +295,14 @@ async function applyOutcomeDerivedScores(matrix: CompeteMatrix, cwd: string): Pr
       const hasFreshEvidence = dimOutcomes.some(o => {
         const entry = evidence!.get(makeEvidenceKey(dim.id, o.id));
         if (!entry?.ranAt) return false;
-        return !isEvidenceStale(o.tier ?? 'T5', entry.ranAt, nowDate);
+        const tier = o.tier ?? 'T5';
+        // LADDER SPLIT (f3ffb82 + council 2026-06-22): this pre-gate must match derived-score.ts. Capability
+        // tiers (T0–T5) are SHA-stable — a passing capability outcome with evidence on disk is derivable
+        // regardless of TTL (SHA-eviction invalidates on code change; elapsed time does not). Only operational
+        // tiers (T6+ live) decay. Without this, a BUILD-COMPLETE dim read 8.0 in gap but collapsed to the 5.0
+        // unverified floor in the headline a week later — the exact contradiction the council flagged.
+        if (tier !== 'T6' && tier !== 'T7' && tier !== 'T8') return true;
+        return !isEvidenceStale(tier, entry.ranAt, nowDate);
       });
       if (!hasFreshEvidence) {
         // No fresh evidence (<24h) — a stored `derived` is STALE and must NOT coast at its old value.

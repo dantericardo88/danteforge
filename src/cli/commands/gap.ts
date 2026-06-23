@@ -20,7 +20,7 @@ import {
 import { TIER_SCORE_CAPS, type CapabilityTier } from '../../matrix/types/capability-test.js';
 import { scoreBand } from '../../core/score-bands.js';
 import { splitFleetLanes } from '../../core/frontier-queue.js';
-import { applyLegacyReceiptCeiling, LEGACY_NO_RECEIPT_CEILING } from '../../matrix/engines/receipt-ceiling.js';
+import { LEGACY_NO_RECEIPT_CEILING } from '../../matrix/engines/receipt-ceiling.js';
 import { runHardenGate } from '../../matrix/engines/hardener.js';
 import { MARKET_CAPPED_DIMS, MARKET_DIM_MAX_SCORE } from '../../core/market-dims.js';
 import type { Outcome, OutcomeEvidence } from '../../matrix/types/outcome.js';
@@ -85,10 +85,22 @@ export async function runGapCli(options: GapCliOptions): Promise<GapCliResult> {
   }
 
   const evidence = await loadOutcomeEvidence(cwd);
-  const analyses: GapAnalysis[] = [];
 
+  // Integrity report computed ONCE (council 2026-06-22): gap previously omitted integrityCapFor, so it
+  // over-counted vs the headline (the live "14 dims at 8.0 vs 9 at 7.0"). Passed into the canonical
+  // deriveDimScoreGated so gap returns the SAME number loadMatrix's headline does.
+  let integrityReport: import('../../matrix/engines/outcome-integrity.js').IntegrityReport | null = null;
+  try {
+    const { checkOutcomeIntegrity } = await import('../../matrix/engines/outcome-integrity.js');
+    integrityReport = await checkOutcomeIntegrity(
+      matrix.dimensions as unknown as Parameters<typeof checkOutcomeIntegrity>[0],
+      cwd,
+    );
+  } catch { integrityReport = null; }
+
+  const analyses: GapAnalysis[] = [];
   for (const dim of targetDims) {
-    const analysis = await analyzeDimension(dim, evidence, cwd);
+    const analysis = await analyzeDimension(dim, evidence, cwd, integrityReport);
     analyses.push(analysis);
   }
 
@@ -107,6 +119,7 @@ async function analyzeDimension(
   dim: { id: string; label: string; scores: Record<string, number>; sprint_history?: unknown[] },
   evidence: OutcomeEvidence,
   cwd: string,
+  integrityReport: import('../../matrix/engines/outcome-integrity.js').IntegrityReport | null,
 ): Promise<GapAnalysis> {
   const d = dim as unknown as Record<string, unknown>;
   const outcomes = Array.isArray(d['outcomes']) ? d['outcomes'] as Outcome[] : [];
@@ -119,12 +132,17 @@ async function analyzeDimension(
     scores: dim.scores,
   };
 
-  const breakdown = computeDerivedScoreWithBreakdown(dfs, evidence);
-  // Frontier gate here too (live pilot finding): gap derives its own score, so without this a
-  // court-REJECTED dim with T7 receipts coached "9.0, next: T8" while every other surface said 8.0.
-  const { applyFrontierGate, applyGroundingGate } = await import('../../core/frontier-spec.js');
-  const gated = applyFrontierGate(applyLegacyReceiptCeiling(breakdown.score, breakdown), dim).score;
-  const score = applyGroundingGate(gated, dim, evidence).score; // Phase 1c: >7 needs a PASSING external receipt (CH-032)
+  // Canonical gated derivation (derive-gated.ts) — the SAME chain (freshness → derive(now) → receipt-ceiling →
+  // integrityCapFor → frontier → grounding) loadMatrix's headline uses, so gap can never disagree with it.
+  // Previously gap omitted `now` AND integrityCapFor (council 2026-06-22 finding: the 14-vs-9 drift).
+  const { deriveDimScoreGated } = await import('../../core/derive-gated.js');
+  const gated = await deriveDimScoreGated(
+    dim as unknown as Parameters<typeof deriveDimScoreGated>[0], evidence, new Date(), integrityReport,
+  );
+  // null score = UNVERIFIED (a dim with only stale operational-tier evidence) → the T2 unverified floor (5.0),
+  // matching loadMatrix's drop-to-unverified. The breakdown is recomputed for the tier detail in that case.
+  const breakdown = gated.breakdown ?? computeDerivedScoreWithBreakdown(dfs, evidence, new Date());
+  const score = gated.score ?? 5.0;
 
 
   // Market-capped meta-dims are bounded by EXTERNAL signals (adoption/enterprise/token telemetry)
