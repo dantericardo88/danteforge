@@ -48,6 +48,10 @@ export interface ValidateCliOptions {
   forceCold?: boolean;
   /** Filter to runtime-only outcome kinds (cli-smoke, runtime-exec, e2e-workflow). */
   runtimeOnly?: boolean;
+  /** Run ONLY this outcome id (council 2026-06-23). Each validate process stamps its own PROCESS_SESSION_ID,
+   *  so validating one outcome per separate process is how distinct T7-consensus sessions are produced without
+   *  the force-cold session-collapse — the evidence-ladder author's per-rung session step. */
+  only?: string;
   // Injection seams for tests
   _loadMatrix?: typeof loadMatrix;
   _onProgress?: (msg: string) => void;
@@ -193,6 +197,7 @@ export async function runValidateCli(options: ValidateCliOptions): Promise<Valid
   const filterOutcomes = (outcomes: Outcome[] | undefined): Outcome[] | undefined => {
     if (!outcomes) return outcomes;
     let kept = outcomes;
+    if (options.only) kept = kept.filter(o => o.id === options.only); // single-outcome run → this process's session
     if (options.runtimeOnly) kept = kept.filter(o => RUNTIME_KINDS.has(o.kind ?? 'shell'));
     if (options.quick) kept = kept.filter(o => QUICK_TIERS.has(o.tier));
     return kept;

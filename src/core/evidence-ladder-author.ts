@@ -82,20 +82,38 @@ export async function authorEvidenceLadder(opts: EvidenceLadderOptions): Promise
     if (!looksLikeProductRun(c)) return fail(`"${c.slice(0, 64)}" is not a recognizable product run`);
   }
 
-  // 2. Author each rung in a SEPARATE process → distinct PROCESS_SESSION_ID (the catch-22 sidestep).
+  // 2. Author each rung in TWO steps, each in its own child process. session-record DECLARES the outcome
+  //    (it does not durably evidence a nested-danteforge run); then `validate --only <id> --force-cold` RUNS
+  //    that one outcome in a SEPARATE process, which stamps a distinct PROCESS_SESSION_ID — so N rungs yield N
+  //    distinct sessions, satisfying the >=2-session T7 consensus without the force-cold whole-dim collapse.
   let authored = 0;
   for (const r of opts.rungs) {
+    let outcomeId: string;
+    try {
+      const srOut = execFileSync(
+        'node',
+        ['dist/index.js', 'session-record', opts.dimId, '--run', r.command, '--callsite', opts.callsite, '--artifact', r.artifact, '--description', r.description, '--write', '--json'],
+        { cwd, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 120_000 },
+      );
+      const i = srOut.indexOf('{'); const j = srOut.lastIndexOf('}');
+      const sr = (i >= 0 && j > i ? JSON.parse(srOut.slice(i, j + 1)) : {}) as { accepted?: boolean; reason?: string; outcome?: { id?: string } };
+      if (!sr.accepted || !sr.outcome?.id) return fail(`session-record did not accept rung ${authored + 1}: ${sr.reason ?? 'no outcome id returned'}`, authored);
+      outcomeId = sr.outcome.id;
+    } catch (e) {
+      const out = (e as { stdout?: string; message?: string }).stdout || (e as { message?: string }).message || '';
+      return fail(`session-record errored on rung ${authored + 1} ("${r.command.slice(0, 40)}"): ${String(out).slice(-200)}`, authored);
+    }
     try {
       execFileSync(
         'node',
-        ['dist/index.js', 'session-record', opts.dimId, '--run', r.command, '--callsite', opts.callsite, '--artifact', r.artifact, '--description', r.description, '--write'],
-        { cwd, stdio: 'pipe', encoding: 'utf8', timeout: 120_000 },
+        ['dist/index.js', 'validate', opts.dimId, '--only', outcomeId, '--force-cold'],
+        { cwd, stdio: ['ignore', 'pipe', 'pipe'], encoding: 'utf8', timeout: 120_000 },
       );
-      authored++;
     } catch (e) {
-      const out = (e as { stdout?: string; message?: string }).stdout || (e as { message?: string }).message || '';
-      return fail(`session-record rejected rung ${authored + 1} ("${r.command.slice(0, 40)}"): ${String(out).slice(-220)}`, authored);
+      const out = (e as { stdout?: string }).stdout || '';
+      return fail(`validate --only failed for rung ${authored + 1} — the demonstration did not pass: ${String(out).slice(-200)}`, authored);
     }
+    authored++;
   }
 
   // 3. Verify a clean T7 with the REAL checks (no fabrication).

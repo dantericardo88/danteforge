@@ -74,6 +74,7 @@ program
   .option('--quick', 'Run only T1/T2 outcomes (fast checks only)')
   .option('--force-cold', 'Bypass gitSha cache and re-execute all outcomes (the default)')
   .option('--preserve-sessions', 'Serve cached evidence: run ONLY outcomes without fresh evidence at this SHA, and PRESERVE prior outcomes\' session_ids. Required for the multi-session frontier capture loop — re-running re-stamps every outcome with one session_id and collapses the >=2-distinct-session proof.')
+  .option('--only <outcomeId>', 'Run ONLY this outcome id. Each validate process stamps its own session, so validating one outcome per separate process yields the distinct sessions the T7 consensus requires (the evidence-ladder per-rung step).')
   .option('--json', 'Machine-readable JSON output')
   .option('--cwd <path>', 'Project directory (defaults to cwd)')
   .addHelpText('after', `
@@ -104,6 +105,7 @@ This command exits 1 if any outcome fails (CI gate).
           // --preserve-sessions forces the cache-serving path (forceCold=false) so already-evidenced
           // outcomes keep their session_ids; otherwise the default is a cold re-run (forceCold=true).
           forceCold: opts.preserveSessions ? false : (opts.forceCold as boolean | undefined),
+          only: opts.only as string | undefined,
           json: opts.json as boolean | undefined,
           cwd: opts.cwd as string | undefined,
         });
