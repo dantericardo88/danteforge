@@ -625,6 +625,24 @@
           "timeout_ms": 120000,
           "required_callsite": "src/matrix/engines/cli-smoke-runner.ts",
           "description": "CLI flag and smoke runner tests execute."
+        },
+        {
+          "id": "functionality_t5_authored",
+          "tier": "T5",
+          "kind": "cli-smoke",
+          "cli_args": [
+            "compete",
+            "status"
+          ],
+          "expected_exit": 0,
+          "expected_stdout_patterns": [
+            "Competitive Matrix — danteforge",
+            "Dimension                        Self   Leader  Gap    Priority  Trend    Status",
+            "────────────────────────────────────────────────────────────────────────────────────"
+          ],
+          "required_callsite": "src/core/compete-matrix.ts",
+          "timeout_ms": 120000,
+          "description": "Authored product run: `node dist/index.js compete status` — patterns verified stable across two consecutive runs."
         }
       ],
       "declared_ceiling": "T7",
