@@ -18,7 +18,10 @@ export interface WeaknessSignal {
   url: string;
   demandScore: number;     // reactions/upvotes/points — proxy for user demand
   category: string;        // mapped to a matrix dimension id
-  foundAt: string;         // ISO timestamp
+  foundAt: string;         // ISO timestamp WE fetched it
+  /** ISO timestamp the issue was FILED in the world (the issue's created_at) — distinct from foundAt. Flows to a
+   *  demand signal's demand_created_at so the anti-fabrication temporal gate can verify demand predates the build. */
+  createdAt?: string;
 }
 
 export interface IntelReport {
@@ -156,6 +159,7 @@ export function issuesToWeaknessSignals(data: unknown, toolName: string): Weakne
   const signals: WeaknessSignal[] = [];
   for (const issue of data as Array<{
     title: string; body: string | null; html_url: string;
+    created_at?: string;
     reactions: { '+1': number; total_count: number };
   }>) {
     const text = `${issue.title} ${issue.body?.slice(0, 300) ?? ''}`;
@@ -171,6 +175,7 @@ export function issuesToWeaknessSignals(data: unknown, toolName: string): Weakne
       demandScore: (issue.reactions?.['+1'] ?? 0) + (issue.reactions?.total_count ?? 0) * 0.5,
       category: dimensionId, // Phase 0.2: matrix dim id (was `label` — broke intelToDemandSignals filtering)
       foundAt: new Date().toISOString(),
+      createdAt: issue.created_at, // the issue's real filing date (for the temporal anti-fabrication gate)
     });
   }
   return signals;

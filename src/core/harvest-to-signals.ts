@@ -52,6 +52,7 @@ export function intelToDemandSignals(
     kind: 'demand' as const,
     source: s.url,
     fetched_at: s.foundAt,
+    demand_created_at: s.createdAt, // the issue's real filing date → feeds the anti-fabrication temporal gate
     claim: `[${s.source} ·${s.demandScore}] ${s.title}${s.snippet ? ` — ${s.snippet}` : ''}`,
   }));
 }
