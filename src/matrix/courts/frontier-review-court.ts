@@ -44,6 +44,10 @@ export interface FrontierJudgeRecord {
    *  UNCLEAR. A court where EVERY judge is unavailable is a STRUCTURAL outage signal independent of the
    *  provider's specific error wording (CH-020) — the orchestrator pauses on it, never ceilings. */
   unavailable?: boolean;
+  /** Demand-grounded specs only: did this judge explicitly affirm `ATTRIBUTION: PASS` — i.e. the demand is
+   *  genuinely addressed to this artifact's actor role? Missing or FAIL on any seated judge fails the court
+   *  closed (council 2026-06-23, the complement to the deterministic attribution gate). */
+  attributionPass?: boolean;
 }
 
 // A judge that COULD NOT RUN reports itself with one of these markers (frontier-review's defaultRunJudge
@@ -198,6 +202,10 @@ function buildDemandSatisfactionPrompt(input: FrontierReviewInput): string {
     ``,
     `Output EXACTLY:`,
     `VERDICT: PASS | FAIL`,
+    `ATTRIBUTION: PASS | FAIL   (PASS ONLY if this demand is genuinely addressed to THIS artifact's actor role —`,
+    `             e.g. a SERVER artifact answering a SERVER-addressed demand. FAIL if the demand was filed against a`,
+    `             DIFFERENT actor — a host bug, a client bug, a CLI bug — that this artifact cannot actually resolve.`,
+    `             This is mandatory: a missing ATTRIBUTION line fails the review closed.)`,
     `CONFIDENCE: HIGH | MEDIUM | LOW`,
     `CEILING: yes | no   (yes ONLY if this dimension genuinely cannot reach the engineering frontier now — e.g. no`,
     `         real external demand exists for it — NOT merely weak evidence)`,
@@ -252,7 +260,10 @@ export async function runFrontierReviewCourt(
     // CH-020: a judge that abstained ONLY because its adapter could not run (outage/auth/kill) is
     // marked unavailable — distinct from a substantive UNCLEAR. An empty answer is also unavailability.
     const unavailable = v.verdict === 'UNCLEAR' && (raw.trim() === '' || JUDGE_UNAVAILABLE_RE.test(raw));
-    judges.push({ judgeId: member, verdict: v.verdict, ceiling, reason: v.reason, unavailable });
+    // Demand-grounded only: the judge must explicitly affirm ATTRIBUTION: PASS. Line-anchored like CEILING so a
+    // value echoed from the builder-controlled artifact tail can't forge it; missing => not affirmed (fail-closed).
+    const attributionPass = /^\s*ATTRIBUTION:\s*PASS/im.test(raw);
+    judges.push({ judgeId: member, verdict: v.verdict, ceiling, reason: v.reason, unavailable, attributionPass });
     // CH-020 (council 2026-06-22): an UNAVAILABLE judge (dead adapter / empty answer, e.g. an unauthed
     // gemini-cli) is NOT a seated opinion — it must not sit in the consensus denominator. Otherwise a single
     // live judge can never reach the 2-PASS quorum and a pure seating OUTAGE masquerades as a quality REJECT.
@@ -275,11 +286,30 @@ export async function runFrontierReviewCourt(
   const fail = judges.filter(j => j.verdict === 'FAIL').length;
   const unclear = judges.filter(j => j.verdict === 'UNCLEAR').length;
 
+  // ATTRIBUTION fail-closed (council 2026-06-23, Codex + Claude — the court-level complement to the deterministic
+  // attribution gate). For a DEMAND-grounded bar, every SEATED judge must explicitly affirm ATTRIBUTION: PASS. If
+  // any seated judge omits it or says FAIL, the review fails closed -> REJECTED, even on a PASS verdict consensus.
+  // This stops a host-filed demand from being laundered into a server-side 9.0 by a lenient judge who skipped the
+  // attribution question. Non-demand (competitor-parity) specs carry no ATTRIBUTION line and are unaffected.
+  const isDemandGrounded = /(?:^|;)\s*harvest-demand:/.test(
+    (input.frontierSpec.leader_target as { evidence_ref?: string }).evidence_ref ?? '',
+  );
+  let verdict: 'VALIDATED' | 'REJECTED' = consensus.verdict === 'PASS' ? 'VALIDATED' : 'REJECTED';
+  let summary = consensus.summary;
+  if (isDemandGrounded && verdict === 'VALIDATED') {
+    const seated = judges.filter(j => !j.unavailable);
+    const affirmed = seated.filter(j => j.attributionPass).length;
+    if (seated.length === 0 || affirmed !== seated.length) {
+      verdict = 'REJECTED';
+      summary = `${summary} | ATTRIBUTION fail-closed: only ${affirmed}/${seated.length} seated judges affirmed the demand is addressed to this artifact's actor role.`;
+    }
+  }
+
   return {
-    verdict: consensus.verdict === 'PASS' ? 'VALIDATED' : 'REJECTED',
+    verdict,
     vote: {
       pass, fail, unclear, total: judges.length,
-      crossMember: consensus.crossMemberJudges, summary: consensus.summary,
+      crossMember: consensus.crossMemberJudges, summary,
     },
     ceilingSignal: judges.filter(j => j.ceiling).length,
     dissent: consensus.dissentLog,
