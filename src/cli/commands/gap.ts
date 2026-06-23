@@ -308,7 +308,7 @@ function printGapReport(analyses: GapAnalysis[]): void {
         : a.currentScore >= 5.0
           ? chalk.yellow
           : chalk.red;
-    const axisTag = band.axis === 'build' ? 'BUILD' : 'FRONTIER';
+    const axisTag = band.axis === 'build' ? 'BUILD' : band.axis === 'engineering' ? 'ENGINEERING' : 'COMPETITIVE';
 
     logger.info('');
     logger.info(

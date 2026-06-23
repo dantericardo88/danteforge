@@ -231,14 +231,30 @@ export function checkHarvestProvenance(
     }
   }
 
-  for (const src of [...prov.capability, ...prov.demand]) {
-    const backing = signals.find(s => (s.kind === 'capability' || s.kind === 'demand') && s.source === src);
+  // CAPABILITY bars stay HUMAN-ratified — only a human can confirm a subjective "this capability is honest" bar.
+  for (const src of prov.capability) {
+    const backing = signals.find(s => s.kind === 'capability' && s.source === src);
     if (!backing) {
-      errors.push(`subjective provenance "${src}" has no backing harvested signal — supply the signal record.`);
+      errors.push(`capability provenance "${src}" has no backing harvested signal — supply the signal record.`);
     } else if (!backing.ratified_by) {
-      errors.push(`subjective bar from "${src}" awaits ratification — a human must confirm this capability/demand bar is honest (hybrid posture).`);
+      errors.push(`capability bar from "${src}" awaits ratification — a human must confirm this capability bar is honest (hybrid posture).`);
     } else if (!signed(backing)) {
-      errors.push(`subjective bar from "${src}" carries ratified_by but no valid kernel signature (CH-030) — ratification must be signed, not self-set. Sign it via signedHarvestedSignal at ratify time.`);
+      errors.push(`capability bar from "${src}" carries ratified_by but no valid kernel signature (CH-030) — ratification must be signed, not self-set. Sign it via signedHarvestedSignal at ratify time.`);
+    }
+  }
+  // DEMAND bars clear AUTONOMOUSLY (council 2026-06-23 — the ENGINEERING-frontier autonomy flip). A real re-fetch
+  // of the issue URLs + reaction counts IS external truth (the count is the signal, like a benchmark number), so a
+  // SIGNED verified_live re-fetch suffices — NO human ratify. This is what makes the engineering frontier reachable
+  // without an operator in the loop, while staying non-gameable (verified_live + the count must be re-fetched and
+  // kernel-signed; an agent cannot honestly self-set them, per the module TRUST BOUNDARY note).
+  for (const src of prov.demand) {
+    const backing = signals.find(s => s.kind === 'demand' && s.source === src);
+    if (!backing) {
+      errors.push(`demand provenance "${src}" has no backing harvested signal — supply the signal record.`);
+    } else if (!backing.verified_live) {
+      errors.push(`demand bar from "${src}" is not verified_live — re-fetch the real issue URLs + reaction counts (the count is the external truth). Demand clears on a signed re-fetch, no human ratify needed.`);
+    } else if (!signed(backing)) {
+      errors.push(`demand bar from "${src}" carries verified_live but no valid kernel signature (CH-030) — sign it via signedHarvestedSignal after the re-fetch.`);
     }
   }
 

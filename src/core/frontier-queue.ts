@@ -22,22 +22,22 @@ export interface BuildLaneItem {
 export interface FrontierQueueItem {
   dimId: string;
   score: number;
-  /** The external anchor required to cross into the frontier — a strategic, human-triaged task. */
+  /** The anchor required to cross into the next band — a strategic, triaged task. */
   anchorTask: string;
-  /** What KIND of anchor: a benchmark receipt or a court-validated win. */
-  anchorKind: 'benchmark-receipt' | 'court-validation' | 'sustain';
+  /** What KIND of anchor. The ENGINEERING-frontier anchors (demand) are AUTONOMOUS; the competitive one is funded. */
+  anchorKind: 'demand-anchor' | 'demand-satisfaction-court' | 'competitive-benchmark' | 'sustain';
 }
 
 export interface LaneSplit {
   buildLane: BuildLaneItem[];        // tactical / loopable
-  frontierQueue: FrontierQueueItem[]; // strategic / queued — needs an external anchor
+  frontierQueue: FrontierQueueItem[]; // strategic / queued — the ENGINEERING (demand) then COMPETITIVE frontier
 }
 
 function anchorKindFor(score: number): FrontierQueueItem['anchorKind'] {
-  if (score >= 9.5) return 'sustain';
-  if (score >= 9.0) return 'sustain';          // re-verify the win to stay fresh
-  if (score >= 8.5) return 'court-validation'; // anchored → next is a court win
-  return 'benchmark-receipt';                  // BUILD-COMPLETE (8.0) → next is a dated benchmark receipt
+  if (score >= 9.5) return 'sustain';                    // COMPETITIVE frontier — re-verify to stay fresh
+  if (score >= 9.0) return 'competitive-benchmark';      // demand-satisfied → next is a competitor benchmark (funded)
+  if (score >= 8.5) return 'demand-satisfaction-court';  // demand-anchored → prove the artifact satisfies the demand
+  return 'demand-anchor';                                // BUILD-COMPLETE (8.0) → anchor real harvested demand (autonomous)
 }
 
 /**

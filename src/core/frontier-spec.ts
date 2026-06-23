@@ -402,7 +402,18 @@ export function applyFrontierGate(score: number, dim: unknown): { score: number;
   // 'validated' is honored ONLY with a verifiable court receipt bound to THIS dim, the current content,
   // and the kernel secret (court-audit #1). A bare `status:'validated'` hand-edit — or a content edit
   // after validation — no longer reaches 9.0; it caps at 8.0 like any unvalidated dim.
-  if (status === 'validated' && spec && verifyValidation(d.id ?? '', spec)) return { score, capped: false };
+  if (status === 'validated' && spec && verifyValidation(d.id ?? '', spec)) {
+    // TWO-RUNG FRONTIER (council 2026-06-23, operator's definition fix). A court-validated spec authorizes a 9,
+    // but WHICH frontier depends on the BAR's provenance:
+    //   • DEMAND-grounded bar (evidence_ref has `harvest-demand:`) = the ENGINEERING frontier (the best version of
+    //     what real users want, court-confirmed satisfaction). AUTONOMOUSLY reachable → authorizes up to 9.0.
+    //   • competitor / benchmark bar = the COMPETITIVE frontier (beats the field). Funded → authorizes 9.5+.
+    // Demand validates "wanted + satisfied", NOT "beats Kiro" — so it must not mint a competitive 9.5.
+    const ref = (spec.leader_target as { evidence_ref?: string } | undefined)?.evidence_ref ?? '';
+    const isDemandGrounded = /(?:^|;)\s*harvest-demand:/.test(ref);
+    const cap = isDemandGrounded ? 9.0 : 9.5;
+    return { score: Math.min(score, cap), capped: score > cap };
+  }
   return { score: FRONTIER_GATE_THRESHOLD, capped: true };
 }
 

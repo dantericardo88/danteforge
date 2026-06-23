@@ -13,17 +13,16 @@ test('build-complete dims (>=8.0) go to the FRONTIER queue; below go to the loop
   assert.deepEqual(split.frontierQueue.map(f => f.dimId).sort(), ['autonomy', 'planning']);
 });
 
-test('the FRONTIER queue is an external-anchor task list — never "build more"', () => {
+test('the FRONTIER queue is a demand-anchor task list — never "build more"', () => {
   const split = splitFleetLanes([{ id: 'planning', score: 8.0 }]);
   const item = split.frontierQueue[0]!;
-  assert.equal(item.anchorKind, 'benchmark-receipt');           // 8.0 -> next anchor is a dated benchmark receipt
-  assert.match(item.anchorTask, /external anchor|benchmark|court/);
-  assert.match(item.anchorTask, /not more code/);
+  assert.equal(item.anchorKind, 'demand-anchor');               // 8.0 -> next anchor is real harvested DEMAND (autonomous)
+  assert.match(item.anchorTask, /demand|external|frontier|ENGINEERING/i);
 });
 
-test('an 8.5 (externally anchored) queues a court-validation task next', () => {
+test('an 8.5 (demand-anchored) queues a demand-satisfaction court task next', () => {
   const split = splitFleetLanes([{ id: 'x', score: 8.5 }]);
-  assert.equal(split.frontierQueue[0]!.anchorKind, 'court-validation');
+  assert.equal(split.frontierQueue[0]!.anchorKind, 'demand-satisfaction-court');
 });
 
 test('lanes are ordered for action: build lane lowest-first, frontier queue highest-first', () => {

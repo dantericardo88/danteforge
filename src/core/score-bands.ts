@@ -14,7 +14,15 @@
 // self-certification hole the derived-score + receipt-ceiling lattice exists to close (a code-only artifact
 // would print "10"). See [[project_build_ceiling_vs_external_anchor]].
 
-export type ScoreAxis = 'build' | 'frontier';
+// THREE axes (council 2026-06-23, operator's frontier-definition fix): the FRONTIER splits into two genuinely
+// different achievements that we were wrongly conflating. The ENGINEERING frontier (8.5–9.0) is the best version
+// of the project ITSELF — validated by real external DEMAND (Reddit/X/GitHub feature requests) that the artifact
+// demonstrably satisfies, court-confirmed. It is AUTONOMOUSLY reachable (harvest demand → build → prove
+// satisfaction). The COMPETITIVE frontier (9.5–10) is beating named competitors — needs an external benchmark or
+// a competitor-parity court win; consciously funded, not autonomous. Demand validates "is it WANTED + satisfied",
+// NOT "does it beat Kiro" — keeping them separate is what makes the engineering frontier reachable without
+// reopening a self-certification hole.
+export type ScoreAxis = 'build' | 'engineering' | 'competitive';
 
 export interface ScoreBand {
   axis: ScoreAxis;
@@ -38,29 +46,29 @@ export const BUILD_CEILING = 8.0;
 export function scoreBand(score: number): ScoreBand {
   if (score >= 9.5) {
     return {
-      axis: 'frontier', label: 'FRONTIER · sustained', isBuildTerminal: false,
-      meaning: 'Repeated, fresh external superiority — approaching human-curated, best-in-class excellence (10).',
+      axis: 'competitive', label: 'COMPETITIVE FRONTIER · sustained', isBuildTerminal: false,
+      meaning: 'Repeated, fresh COMPETITIVE superiority vs the field — a dated benchmark win + competitor-parity court, sustained. Consciously funded; not autonomously reachable. The honest "we beat the field" claim.',
     };
   }
   if (score >= 9.0) {
     return {
-      axis: 'frontier', label: 'FRONTIER · court-validated', isBuildTerminal: false,
-      nextAnchor: 'repeat the win on a fresh, dated external benchmark to sustain it',
-      meaning: 'Independently court-validated as best-in-class vs a named competitor.',
+      axis: 'engineering', label: 'ENGINEERING FRONTIER · demand-satisfied', isBuildTerminal: false,
+      nextAnchor: 'beat a named competitor on a dated external benchmark → COMPETITIVE FRONTIER (9.5+), a separately-funded achievement',
+      meaning: 'The artifact demonstrably SATISFIES a frozen, signed cluster of real external DEMAND (GitHub/Reddit/X feature requests), independently court-confirmed — the best version of what real users actually want. Autonomously reachable; this is the engineering/technological frontier, NOT a claim of beating competitors.',
     };
   }
   if (score >= 8.5) {
     return {
-      axis: 'frontier', label: 'FRONTIER · externally anchored', isBuildTerminal: false,
-      nextAnchor: 'court-validate the superiority claim against the named competitor',
-      meaning: 'A dated, reproducible external benchmark receipt vs a named competitor exists (this is how real frontier tools evidence a 9 — not live telemetry).',
+      axis: 'engineering', label: 'ENGINEERING FRONTIER · demand-anchored', isBuildTerminal: false,
+      nextAnchor: 'prove the artifact SATISFIES the demand via the demand-satisfaction court → demand-satisfied (9.0)',
+      meaning: 'A frozen, signed cluster of real external DEMAND (re-fetchable issue URLs + reaction counts — the count IS external truth) is bound to this dim as the bar. Demand proves the target is genuinely WANTED; the next step proves the artifact clears it.',
     };
   }
   if (score >= BUILD_CEILING) {
     return {
       axis: 'build', label: 'BUILD-COMPLETE', isBuildTerminal: true,
-      nextAnchor: 'obtain a dated external benchmark receipt OR a court-validated win — an external anchor, not more code',
-      meaning: 'Production-grade: wired into a real production path AND smoke-passing on real input. The build has SUCCEEDED — this is its terminal "done". 9+ is the FRONTIER overlay, reachable only with an external anchor a build cannot manufacture.',
+      nextAnchor: 'anchor a frozen, signed cluster of real external demand → ENGINEERING FRONTIER (8.5) — the autonomously-reachable frontier (harvest what users want, then satisfy it)',
+      meaning: 'Production-grade: wired into a real production path AND smoke-passing on real input. The build has SUCCEEDED — this is its terminal "done". The ENGINEERING frontier (8.5–9.0) is the next, autonomously-reachable step: bind real harvested demand and prove the artifact satisfies it.',
     };
   }
   if (score >= 7.0) {
@@ -93,9 +101,9 @@ export function scoreBand(score: number): ScoreBand {
  */
 export function scoreBandHeadline(score: number): string {
   const b = scoreBand(score);
-  const axisTag = b.axis === 'build' ? 'BUILD' : 'FRONTIER';
+  const axisTag = b.axis === 'build' ? 'BUILD' : b.axis === 'engineering' ? 'ENGINEERING' : 'COMPETITIVE';
   const terminal = b.isBuildTerminal
-    ? ' — build SUCCEEDED (terminal); 9+ needs an external anchor, not more code'
+    ? ' — build SUCCEEDED (terminal); the ENGINEERING frontier (8.5–9.0, demand-satisfied) is the next autonomous step'
     : '';
   return `${score.toFixed(1)} · ${b.label} [${axisTag} axis]${terminal}`;
 }

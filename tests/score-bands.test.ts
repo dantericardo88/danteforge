@@ -13,14 +13,19 @@ test('8.0 is a terminal BUILD-COMPLETE success on the build axis — not a failu
   assert.match(scoreBandHeadline(8.0), /SUCCEEDED/);
 });
 
-test('9+ is the FRONTIER axis — external anchor, never the build axis', () => {
-  for (const s of [8.5, 9.0, 9.5]) {
-    assert.equal(scoreBand(s).axis, 'frontier', `score ${s} must be on the frontier axis`);
+test('8.5–9.0 is the ENGINEERING frontier (demand); 9.5+ is the COMPETITIVE frontier — never the build axis', () => {
+  // ENGINEERING frontier = the best version, validated by real external DEMAND (autonomously reachable)
+  for (const s of [8.5, 9.0]) {
+    assert.equal(scoreBand(s).axis, 'engineering', `score ${s} must be on the engineering frontier`);
     assert.equal(scoreBand(s).isBuildTerminal, false);
   }
-  // the externally-anchored band names the benchmark-receipt path (not telemetry)
-  assert.match(scoreBand(8.5).meaning, /benchmark receipt/);
-  assert.match(scoreBand(8.5).meaning, /not live telemetry/);
+  // COMPETITIVE frontier = beating named competitors (funded, not autonomous)
+  assert.equal(scoreBand(9.5).axis, 'competitive');
+  assert.equal(scoreBand(10).axis, 'competitive');
+  // the engineering band is anchored on DEMAND, not on a competitor benchmark
+  assert.match(scoreBand(8.5).meaning, /demand/i);
+  assert.match(scoreBand(9.0).meaning, /satisfies.*demand/i);
+  assert.match(scoreBand(9.5).meaning, /competit/i);
 });
 
 test('thresholds mirror TIER_SCORE_CAPS exactly (relabel, never renumber)', () => {
@@ -36,7 +41,6 @@ test('every band carries an honest next-step anchor (except the unscored floor a
   for (const s of [3, 6, 7.2, 8.0, 8.6, 9.1]) {
     assert.ok(scoreBand(s).nextAnchor, `score ${s} should name what unlocks the next band`);
   }
-  // the build ceiling's next step is explicitly an EXTERNAL anchor, not more code
-  assert.match(scoreBand(8.0).nextAnchor!, /external anchor|benchmark|court/);
-  assert.match(scoreBand(8.0).nextAnchor!, /not more code/);
+  // the build ceiling's next step is the autonomously-reachable ENGINEERING frontier (harvested demand)
+  assert.match(scoreBand(8.0).nextAnchor!, /demand|ENGINEERING/i);
 });
