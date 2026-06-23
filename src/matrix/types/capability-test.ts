@@ -57,7 +57,16 @@ export const CAPABILITY_TEST_SCORE_CAP = 5.0;
 
 export type CapabilityTier = 'T0' | 'T1' | 'T2' | 'T3' | 'T4' | 'T5' | 'T6' | 'T7' | 'T8';
 
-/** Per-tier score caps. T2 = legacy capability_test cap (5.0). */
+/**
+ * Per-tier score caps. T2 = legacy capability_test cap (5.0).
+ *
+ * TWO-AXIS reading (see src/core/score-bands.ts, council 2026-06-22): T0–T5 are the BUILD axis — engineering
+ * completeness, terminal at T5/8.0 ("BUILD-COMPLETE": wired + smoke-passing = the build has SUCCEEDED, not
+ * fallen short). T6–T8 (8.5–9.5) are the FRONTIER axis — external/competitive superiority, reachable ONLY with
+ * an external anchor a build cannot manufacture (a dated reproducible benchmark receipt, or a court-validated
+ * win vs a named competitor). An 8.0 is a success, not "80% to done". Relabel, never renumber: bumping these
+ * caps re-opens the self-certification hole the whole lattice exists to close.
+ */
 export const TIER_SCORE_CAPS: Record<CapabilityTier, number> = {
   T0: 1.0, T1: 4.0, T2: 5.0, T3: 6.0, T4: 7.0, T5: 8.0, T6: 8.5, T7: 9.0, T8: 9.5,
 };
@@ -75,8 +84,15 @@ export const TIER_SCORE_CAPS: Record<CapabilityTier, number> = {
  *   T2: 60 days   (unit tests; weekly rerun is typical)
  *   T3: 30 days   (production-usage-fresh; one calendar month)
  *   T4: 14 days   (integration; bi-weekly cadence)
- *   T5: 7 days    (smoke against real env; weekly minimum)
- *   T6: 24 hours  (live telemetry; same-day evidence only)
+ *   T5: 7 days    (smoke against real env; weekly minimum — the BUILD ceiling)
+ *   T6: 24 hours  (operational deep-probe / same-day external receipt — FRONTIER axis)
+ *
+ * NOTE on the FRONTIER tiers (T6–T8): the canonical 9+ evidence is a DATED, REPRODUCIBLE EXTERNAL BENCHMARK
+ * RECEIPT vs a named competitor (how real frontier tools — SWE-Agent etc. — actually evidence a 9), NOT
+ * continuous live telemetry. Earlier docs called T6 "live telemetry"; the code awards it to an operational
+ * deep-probe / dated receipt, so the freshness window is short to keep an external claim current, not because
+ * a telemetry stream is required. Only the FRONTIER (T6+) tiers carry this short TTL — the BUILD tiers (T0–T5)
+ * are SHA-stable (see derived-score.ts ladder split, f3ffb82).
  *
  * Note: SHA-based eviction already invalidates evidence on any commit. This
  * layer adds time-based decay for the case where the SHA hasn't moved but

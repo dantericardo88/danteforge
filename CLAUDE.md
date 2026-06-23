@@ -116,17 +116,21 @@ When a file approaches the limit, split it: `foo.ts` → `foo.ts` + `foo-types.t
 A dimension is not complete until it has produced an observable artifact on the target hardware.
 **Code without a receipt is a hypothesis, not a feature.**
 
-### Score tiers (structurally enforced by `receipt-ceiling.ts` + `derived-score.ts`):
+### Score tiers — TWO AXES (structurally enforced by `receipt-ceiling.ts` + `derived-score.ts`; labels in `score-bands.ts`):
 
-| Score | Tier | What it means | How to unlock |
-|---|---|---|---|
-| ≤5.0 | T2 | Code exists, unit tests pass | Module + tests (no outcomes needed) |
-| ≤7.0 | T4 | Production callsite wired | Orphan check passes (harden gate) |
-| ≤8.0 | T5 | Smoke test passes, ≤7 days | `danteforge validate <dim>` with T5 outcome |
-| ≤8.5 | T6 | Live telemetry, ≤24 hours | T6 telemetry outcome passes |
-| ≤9.0 | T7 | Multi-receipt consensus | 3+ outcomes at T5+, ALL passing, ≤7 days |
-| ≤9.5 | T8 | Live verification, ≤24 hours | All outcomes fresh + live verify |
-| 10.0 | — | Human-curated excellence | Sustained multi-receipt + external benchmark |
+A 0–10 score carries **two categories**. The **BUILD axis** (T0–T5) is engineering completeness — it **terminates at 8.0 / "BUILD-COMPLETE"**, which is the build *succeeding*, not "80% to done". The **FRONTIER axis** (T6–T8, 8.5–9.5) is external/competitive superiority — reachable **only with an external anchor a build cannot manufacture** (a dated reproducible benchmark receipt, or a court-validated win vs a named competitor). **An 8.0 is a success.** Relabel, never renumber.
+
+| Score | Tier | Axis | What it means | How to unlock |
+|---|---|---|---|---|
+| ≤5.0 | T2 | BUILD | Code exists, unit tests pass (MODULE) | Module + tests (no outcomes needed) |
+| ≤7.0 | T4 | BUILD | Production callsite wired (WIRED) | Orphan check passes (harden gate) |
+| **8.0** | **T5** | **BUILD** | **BUILD-COMPLETE — wired + smoke-passing. The build has SUCCEEDED (terminal "done").** | `danteforge validate <dim>` with a real T5 smoke outcome |
+| ≤8.5 | T6 | FRONTIER | Externally anchored — a dated, reproducible external **benchmark receipt** vs a named competitor (NOT live telemetry) | A passing `external-benchmark` outcome / dated receipt |
+| ≤9.0 | T7 | FRONTIER | Court-validated best-in-class + multi-receipt consensus | 3+ T5+ outcomes ALL passing, ≤7 days + frontier-review court `validated` |
+| ≤9.5 | T8 | FRONTIER | Repeated / fresh external superiority | All anchors fresh + re-verified |
+| 10.0 | — | FRONTIER | Sustained, human-curated best-in-class excellence | Sustained multi-receipt + external benchmark |
+
+> The 8→9 leap is **strategic, not tactical** — a *queue* of human-triaged external-anchor tasks (benchmark runs, court wins), not an autonomous build loop. Build-to-8.0 is loopable/AFK; crossing into the FRONTIER is a consciously-funded milestone.
 
 Run `danteforge gap <dim>` to see exactly what's needed to reach the next tier.
 

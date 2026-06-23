@@ -18,6 +18,8 @@ import {
   type DimensionForScoring,
 } from '../../core/derived-score.js';
 import { TIER_SCORE_CAPS, type CapabilityTier } from '../../matrix/types/capability-test.js';
+import { scoreBand } from '../../core/score-bands.js';
+import { splitFleetLanes } from '../../core/frontier-queue.js';
 import { applyLegacyReceiptCeiling, LEGACY_NO_RECEIPT_CEILING } from '../../matrix/engines/receipt-ceiling.js';
 import { runHardenGate } from '../../matrix/engines/hardener.js';
 import { MARKET_CAPPED_DIMS, MARKET_DIM_MAX_SCORE } from '../../core/market-dims.js';
@@ -239,10 +241,19 @@ async function analyzeDimension(
     }
   } catch { /* best-effort — harden gate crash should not block gap analysis */ }
 
-  // Compute next action (most impactful single thing)
-  let nextAction = 'All clear — dimension is at maximum achievable score';
+  // Compute next action (most impactful single thing). At/above the build ceiling the "next action" is a
+  // band-aware reframe (council 2026-06-22): a BUILD-COMPLETE dim has SUCCEEDED — its next step is an EXTERNAL
+  // anchor (benchmark receipt / court win), not more code, and an 8.0 must never read as "almost failing".
+  const band = scoreBand(score);
+  let nextAction: string;
   if (blockers.length > 0) {
     nextAction = blockers[0]!.remedy;
+  } else if (band.isBuildTerminal) {
+    nextAction = `BUILD-COMPLETE — the build has SUCCEEDED (terminal "done"). To cross into the FRONTIER (9+): ${band.nextAnchor}`;
+  } else if (band.nextAnchor) {
+    nextAction = `Next (${band.label}): ${band.nextAnchor}`;
+  } else {
+    nextAction = 'All clear — dimension is at maximum achievable score';
   }
 
   return {
@@ -269,16 +280,22 @@ function printGapReport(analyses: GapAnalysis[]): void {
       ? `next: ${a.nextTier} → ${a.nextTierScore?.toFixed(1)}`
       : 'at ceiling';
 
-    const scoreColor = a.currentScore >= 9.0
+    // Two-axis colouring: BUILD-COMPLETE (8.0) and the frontier band are SUCCESS states (green), never the
+    // yellow "warning" that made an 8.0 read as a near-miss. Wired (7.0) is healthy build progress (cyan).
+    const band = scoreBand(a.currentScore);
+    const scoreColor = a.currentScore >= 8.0
       ? chalk.green
       : a.currentScore >= 7.0
-        ? chalk.yellow
-        : chalk.red;
+        ? chalk.cyan
+        : a.currentScore >= 5.0
+          ? chalk.yellow
+          : chalk.red;
+    const axisTag = band.axis === 'build' ? 'BUILD' : 'FRONTIER';
 
     logger.info('');
     logger.info(
       `  ${chalk.bold(a.dimensionId)} ` +
-      `(score: ${scoreColor(a.currentScore.toFixed(1))}, ` +
+      `(score: ${scoreColor(a.currentScore.toFixed(1))} · ${chalk.bold(band.label)} [${axisTag}], ` +
       `tier: ${a.currentTier}, ${tierLabel})`,
     );
 
@@ -292,6 +309,20 @@ function printGapReport(analyses: GapAnalysis[]): void {
     }
 
     logger.info(chalk.cyan(`    NEXT ACTION: ${a.nextAction}`));
+  }
+
+  // Loops vs Queues (Matt Pocock / council 2026-06-22): split the fleet into the loopable BUILD lane and the
+  // human-triaged FRONTIER queue, so frontier work reads as a reviewable queue, not a loop banging on 8.0.
+  if (analyses.length > 1) {
+    const split = splitFleetLanes(analyses.map(a => ({ id: a.dimensionId, score: a.currentScore })));
+    logger.info('');
+    logger.info(chalk.dim('─'.repeat(60)));
+    logger.info(chalk.bold('  Loops vs Queues'));
+    logger.info(chalk.cyan(`  BUILD lane (loopable / AFK, <8.0): ${split.buildLane.length} dim(s)`) + chalk.dim(' — autoforge/the climb can close these alone.'));
+    logger.info(chalk.green(`  FRONTIER queue (BUILD-COMPLETE ≥8.0, needs an EXTERNAL anchor): ${split.frontierQueue.length} dim(s)`) + chalk.dim(' — strategic, human-triaged (benchmark run / court win), not a loop.'));
+    for (const f of split.frontierQueue.slice(0, 8)) {
+      logger.info(chalk.dim(`    • ${f.dimId} (${f.score.toFixed(1)}) → ${f.anchorKind}`));
+    }
   }
 
   logger.info('');
