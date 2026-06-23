@@ -184,6 +184,34 @@ program
     })();
   });
 
+program
+  .command('frontier-loop <dimId>')
+  .description('The convergent court-feedback loop (council 2026-06-23): author T7 evidence (evidence-ladder) -> court -> on REJECTED, re-author toward the judges\' objection -> repeat, until VALIDATED (9.0) or an honest ceiling (same objection twice). The loop that re-authors the EVIDENCE the court judges — the link the existing loops were missing.')
+  .requiredOption('--config <path>', 'Evidence-ladder config: { callsite, rungs:[{command,artifact,description}] }')
+  .option('--builder <memberId>', 'The member that builds the demonstrations (excluded from judging)', 'claude-code')
+  .option('--max-iters <n>', 'Max court iterations before stopping', (v: string) => parseInt(v, 10), 4)
+  .option('--json', 'Machine-readable JSON output')
+  .option('--cwd <path>', 'Project directory (defaults to cwd)')
+  .action((dimId: string, opts) => {
+    void (async () => {
+      try {
+        const { runFrontierLoopCli } = await import('./commands/frontier-loop.js');
+        await runFrontierLoopCli({
+          dimId,
+          config: opts.config as string,
+          builder: (opts.builder as string) ?? 'claude-code',
+          maxIters: (opts.maxIters as number) ?? 4,
+          json: opts.json as boolean | undefined,
+          cwd: opts.cwd as string | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'frontier-loop');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 const frontierCmd = program
   .command('frontier-spec')
   .description('Define + track the per-dim "what would 9.0 mean?" contract (frontier_spec): the real-user-path run, observable artifact, and competitor to match. Frozen before implementation so the target cannot move.');

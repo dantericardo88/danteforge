@@ -1,8 +1,8 @@
 {
-  "callsite": "src/core/frontier-spec.ts",
+  "callsite": "src/core/completion-integrity.ts",
   "rungs": [
-    { "command": "node dist/index.js gov-demo receipt-integrity --out out/gov-receipt-integrity.json", "artifact": "out/gov-receipt-integrity.json", "description": "kernel-signed receipt integrity: receipt forgery, content-tamper, and provenance dimension/builder-binding all rejected" },
-    { "command": "node dist/index.js gov-demo score-surface-ownership --out out/gov-score-surface-ownership.json", "artifact": "out/gov-score-surface-ownership.json", "description": "the kernel-owned score surface (matrix.json, score-proposals, outcome-evidence, universe bar) is structurally forbidden to build workers" },
-    { "command": "node dist/index.js gov-demo judge-independence --out out/gov-judge-independence.json", "artifact": "out/gov-judge-independence.json", "description": "builders are excluded from judging their own dim; a kernel-signed token seats a peer; a forged token falls to the safe floor" }
+    { "command": "node dist/index.js gov-demo merge-court-stub-gate --out out/gov-merge-court-stub-gate.json", "artifact": "out/gov-merge-court-stub-gate.json", "description": "merge-court no-stub gate: the REAL scanForStubs detects a genuine stub (throw new Error not implemented) and passes a genuine implementation clean (no false positive)" },
+    { "command": "node dist/index.js gov-demo completion-integrity-gate --out out/gov-completion-integrity-gate.json", "artifact": "out/gov-completion-integrity-gate.json", "description": "completion-integrity: the REAL 14-point runCIPCheck classifies a no-evidence dim as missing and BLOCKS FRONTIER_REACHED (cannot self-pass nothing)" },
+    { "command": "node dist/index.js gov-demo protected-lines-gate --out out/gov-protected-lines-gate.json", "artifact": "out/gov-protected-lines-gate.json", "description": "protected-lines: capability-proven file:line ranges are protected; touching one is a real violation; unprotect releases it (full govern->detect->release lifecycle)" }
   ]
 }
