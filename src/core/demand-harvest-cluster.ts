@@ -30,7 +30,12 @@ export interface DemandCluster {
   keywords: string[];
   issues: DemandIssue[];
   signals: DemandSignals;
-  score: number;         // 0..10 — weighted blend of the four signals
+  score: number;         // 0..10 — weighted blend of ALL four signals (the general backlog rank)
+  /** 0..10 — the demand blend with BUILDABILITY EXCLUDED (remaining weights re-normalized). The FRONTIER-binding
+   *  rank: how WANTED a cluster is, independent of how easy it is to satisfy. Binding a frontier bar to the top
+   *  frontierScore cluster can't be selection-laundered toward demand we already meet (council 2026-06-23).
+   *  Optional on input literals; ALWAYS set by scoreCluster on output. */
+  frontierScore?: number;
 }
 
 // Signal weights (sum to 1). Frequency dominates — many distinct asks is the strongest demand signal —
@@ -104,6 +109,7 @@ export function clusterIssues(issues: DemandIssue[]): DemandCluster[] {
       issues: clusterIssues,
       signals: { frequency: 0, recency: 0, specificity: 0, buildability: 0 },
       score: 0,
+      frontierScore: 0,
     });
   }
   return clusters;
@@ -157,7 +163,45 @@ export function scoreCluster(cluster: DemandCluster, nowMs: number): DemandClust
     DEMAND_WEIGHTS.specificity * specificity +
     DEMAND_WEIGHTS.buildability * buildability
   );
-  return { ...cluster, signals, score: Math.round(score * 10) / 10 };
+  // Frontier-binding score: the SAME blend with buildability dropped and the remaining weights re-normalized to
+  // sum to 1, so the bar is driven by "what users most want" not "what we can most easily build" (anti-laundering).
+  const nonBuild = DEMAND_WEIGHTS.frequency + DEMAND_WEIGHTS.recency + DEMAND_WEIGHTS.specificity;
+  const frontierScore = 10 * (
+    DEMAND_WEIGHTS.frequency * frequency +
+    DEMAND_WEIGHTS.recency * recency +
+    DEMAND_WEIGHTS.specificity * specificity
+  ) / nonBuild;
+  return {
+    ...cluster, signals,
+    score: Math.round(score * 10) / 10,
+    frontierScore: Math.round(frontierScore * 10) / 10,
+  };
+}
+
+/** Rank clusters for FRONTIER binding by frontierScore (buildability-excluded) — the most WANTED demand first,
+ *  not the most buildable. `nowMs` injected for determinism. */
+export function rankForFrontierBinding(issues: DemandIssue[], nowMs: number): DemandCluster[] {
+  return clusterIssues(issues)
+    .map(c => scoreCluster(c, nowMs))
+    .sort((a, b) => (b.frontierScore ?? 0) - (a.frontierScore ?? 0) || b.issues.length - a.issues.length);
+}
+
+/**
+ * Selection-laundering guard (council 2026-06-23, Claude): warn when the cluster bound as a frontier bar is more
+ * BUILDABLE but less WANTED than the top cluster by frontierScore — the signature of cherry-picking demand we
+ * already satisfy. Returns null when the bound cluster IS the most-wanted (no laundering).
+ */
+export function frontierBindingLaunderingWarning(clusters: DemandCluster[], boundTheme: string): string | null {
+  if (clusters.length === 0) return null;
+  const fs = (c: DemandCluster) => c.frontierScore ?? 0;
+  const top = [...clusters].sort((a, b) => fs(b) - fs(a))[0]!;
+  if (top.theme === boundTheme) return null;
+  const bound = clusters.find(c => c.theme === boundTheme);
+  if (!bound) return null;
+  if (fs(bound) < fs(top) && bound.signals.buildability >= top.signals.buildability) {
+    return `selection-laundering risk: bound demand "${boundTheme}" (frontierScore ${fs(bound)}) is more BUILDABLE but less WANTED than "${top.theme}" (frontierScore ${fs(top)}). Bind the most-wanted demand, not the most-buildable.`;
+  }
+  return null;
 }
 
 function avg(ns: number[]): number { return ns.length === 0 ? 0 : ns.reduce((a, b) => a + b, 0) / ns.length; }
