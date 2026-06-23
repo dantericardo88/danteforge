@@ -11,6 +11,7 @@ import type {
 // module load, so the binding is always resolved by the time it runs.
 import { writeVerifiedScore } from './write-verified-score.js';
 import { MARKET_CAPPED_DIMS, MARKET_DIM_MAX_SCORE } from './market-dims.js';
+import { LEGACY_NO_RECEIPT_CEILING } from '../matrix/engines/receipt-ceiling.js';
 
 // ── Priority Constants ────────────────────────────────────────────────────────
 
@@ -90,12 +91,17 @@ function dimDeclaresOutcomes(dim: unknown): boolean {
  * effectiveDimScore would fall back to the raw (inflatable) self-score. Here, a dim that DECLARES
  * outcomes but lacks a derived score is treated as UNVERIFIED and capped — so crusade can't be
  * fooled into skipping inflated-but-unproven dimensions. Dims with no outcome mechanism at all
- * fall back to the effective score (legacy/market dims are bounded by other caps).
+ * fall back to the LEGACY NO-RECEIPT CEILING (7.0) + market cap (5.0) — NEVER raw self. (Council 2026-06-23
+ * found the gap-vs-loop drift: a no-outcomes dim with self=8.5 read 8.5 here, uncapped, while gap.ts/validate
+ * correctly capped it via deriveDimScoreGated. This is the decision-path twin of that legacy ceiling.)
  */
-export function decisionDimScore(dim: { scores: Record<string, number>; outcomes?: unknown }): number {
+export function decisionDimScore(dim: { id?: string; scores: Record<string, number>; outcomes?: unknown }): number {
   if (dim.scores['derived'] !== undefined) return effectiveDimScore(dim); // fresh evidence → honest already
   if (dimDeclaresOutcomes(dim)) return Math.min(dim.scores['self'] ?? 0, UNVERIFIED_DECISION_CAP);
-  return effectiveDimScore(dim); // no outcome mechanism → self is the only signal
+  // No outcome mechanism at all: self is the only signal — but code without a receipt is a hypothesis, so cap at
+  // the legacy no-receipt ceiling (7.0), and at the market cap (5.0) for adoption/spend dims when the id is known.
+  const base = Math.min(effectiveDimScore(dim), LEGACY_NO_RECEIPT_CEILING);
+  return dim.id && MARKET_CAPPED_DIMS.has(dim.id) ? Math.min(base, MARKET_DIM_MAX_SCORE) : base;
 }
 
 export function computeOverallScore(matrix: CompeteMatrix): number {
