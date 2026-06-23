@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { runFrontierLoop, type FrontierLoopSeams } from '../src/core/frontier-loop.js';
+import { runFrontierLoop, classifyCourtOutput, type FrontierLoopSeams } from '../src/core/frontier-loop.js';
 
 function tmp(): string { return fs.mkdtempSync(path.join(os.tmpdir(), 'frontier-loop-')); }
 const ready = async () => ({ courtReady: true, tier: 'T7', reason: '' });
@@ -48,6 +48,17 @@ test('evidence not court-ready → stops honestly (does not run the court)', asy
   assert.equal(r.validated, false);
   assert.equal(courtCalls, 0);          // never ran the court on un-ready evidence
   assert.match(r.stoppedReason, /not reach a clean court-ready T7/);
+});
+
+// Codex's required pin: a court PASS that CIP blocks must NOT register as VALIDATED (no false 9).
+test('classifyCourtOutput: VALIDATED only when validatedWritten && !ceilingWritten', () => {
+  assert.equal(classifyCourtOutput(JSON.stringify({ result: { verdict: 'VALIDATED' }, validatedWritten: true, ceilingWritten: false })), 'VALIDATED');
+  // court said VALIDATED but CIP blocked it → a ceiling was written, NOT a 9:
+  assert.equal(classifyCourtOutput(JSON.stringify({ result: { verdict: 'VALIDATED' }, validatedWritten: false, ceilingWritten: true })), 'REJECTED');
+  assert.equal(classifyCourtOutput(JSON.stringify({ result: { verdict: 'REJECTED' }, validatedWritten: false, ceilingWritten: false })), 'REJECTED');
+  // a bare textual "VALIDATED" with no validatedWritten proof is NEVER trusted:
+  assert.equal(classifyCourtOutput('the court said VALIDATED'), 'ERROR');
+  assert.equal(classifyCourtOutput('frontier review needs 2 independent judges'), 'INSUFFICIENT');
 });
 
 test('the SAME objection twice → honest ceiling (no infinite re-rolling)', async () => {
