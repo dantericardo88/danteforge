@@ -36,7 +36,7 @@ describe('planNextAction — honest autonomous sequencing', () => {
   });
 
   test('skipDims excludes a dim from EVERY selection (the cloud-only code_generation guard)', () => {
-    const dims = [dim({ id: 'code_generation', effectiveScore: 4.0 }), dim({ id: 'safe', effectiveScore: 8.0 })];
+    const dims = [dim({ id: 'code_generation', effectiveScore: 4.0 }), dim({ id: 'safe', effectiveScore: 7.5 })];
     // Without skip, the below-7 dim is selected for build-to-7 (would trigger the heavy cloud grade):
     assert.deepEqual(planNextAction(dims, OPTS), { type: 'build-to-7', dims: ['code_generation'] });
     // With skip, code_generation never appears in ANY selected action — the loop advances to the safe dim:
@@ -46,9 +46,18 @@ describe('planNextAction — honest autonomous sequencing', () => {
   });
 
   test('a dim that exhausted novel attempts → generator-ceiling (no infinite grind)', () => {
-    const a = planNextAction([dim({ id: 'a', effectiveScore: 8.0, attempts: 3 })], OPTS);
+    // below its honest ceiling (7.5 < 8.0) so it's still a candidate, but out of attempts → generator-ceiling.
+    const a = planNextAction([dim({ id: 'a', effectiveScore: 7.5, attempts: 3 })], OPTS);
     assert.equal(a.type, 'ceiling');
     assert.equal((a as { cause: string }).cause, 'generator-ceiling');
+  });
+
+  test('FINISH-mode: a no-demand dim at 8.0 is FINISHED (not pushed to 9); a demand-bound dim at 8.0 IS pushed', () => {
+    const finished = planNextAction([dim({ id: 'a', effectiveScore: 8.0 })], OPTS);
+    assert.equal(finished.type, 'done');
+    assert.match((finished as { summary: string }).summary, /BUILD-COMPLETE/);
+    const pushed = planNextAction([dim({ id: 'a', effectiveScore: 8.0, demandBound: true })], OPTS);
+    assert.equal(pushed.type, 'push-to-9');
   });
 
   test('validated-at-9 and active-ceiling dims are complete → done', () => {
@@ -94,10 +103,13 @@ describe('planNextAction — honest autonomous sequencing', () => {
     assert.equal(a.type, 'ceiling', 'buildAttempts 2 >= maxBuildAttempts 2 → ceiling even though push max is 3');
   });
 
-  test('isDimDone: validated-9 OR active ceiling; frozen-8 is NOT done', () => {
+  test('isDimDone: validated-9, active ceiling, or no-demand BUILD-COMPLETE; demand-bound frozen-8 is NOT done', () => {
     assert.equal(isDimDone(dim({ effectiveScore: 9.0, frontierStatus: 'validated' }), NOW), true);
-    assert.equal(isDimDone(dim({ effectiveScore: 8.0, frontierStatus: 'frozen' }), NOW), false);
     assert.equal(isDimDone(dim({ ceiling: ceiling() }), NOW), true);
+    // FINISH-mode: a NO-demand dim at 8.0 is BUILD-COMPLETE = done; a DEMAND-bound dim at 8.0 still needs 9.
+    assert.equal(isDimDone(dim({ effectiveScore: 8.0, frontierStatus: 'frozen' }), NOW), true);
+    assert.equal(isDimDone(dim({ effectiveScore: 8.0, frontierStatus: 'frozen', demandBound: true }), NOW), false);
+    assert.equal(isDimDone(dim({ effectiveScore: 7.5, frontierStatus: 'frozen' }), NOW), false);
   });
 });
 

@@ -11,7 +11,9 @@ const ROOT = path.join('X:\\tmp', `ascend-loop-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 function dim(over: Partial<DimState> = {}): DimState {
-  return { id: 'd', effectiveScore: 8.0, frontierStatus: 'frozen', ceiling: null, attempts: 0, isMarketCapped: false, ...over };
+  // demandBound:true by default — these orchestration tests exercise the PUSH-to-9 flow, which now requires a
+  // demand-bound dim (a no-demand 8.0 dim FINISHES instead of pushing; finish-mode is tested in the engine test).
+  return { id: 'd', effectiveScore: 8.0, frontierStatus: 'frozen', ceiling: null, attempts: 0, isMarketCapped: false, demandBound: true, ...over };
 }
 
 describe('ascend-frontier — phase routing (sequential vs council-parallel)', () => {

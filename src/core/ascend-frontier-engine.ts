@@ -8,6 +8,8 @@
 
 import type { CeilingReceipt, CeilingCause } from './ceiling-receipt.js';
 import { isCeilingActive } from './ceiling-receipt.js';
+import { resolveHonestTarget } from './finish-ceiling.js';
+import { BUILD_CEILING } from './score-bands.js';
 
 export type FrontierSpecStatus = 'validated' | 'frozen' | 'draft' | 'stale' | 'none';
 
@@ -22,6 +24,10 @@ export interface DimState {
   attempts: number;
   /** True when the dim is structurally market-capped (≤5.0, can't reach 9 pre-release). */
   isMarketCapped: boolean;
+  /** True when a demand-grounded frontier_spec is bound (evidence_ref carries `harvest-demand:`), so this dim's
+   *  honest target is 9.0 (not 8.0). Default/absent = no demand bound → BUILD-COMPLETE (8.0) is the honest ceiling
+   *  and the loop must NOT push it to 9 (the demand gate would reject it). Set by the DimState builder. */
+  demandBound?: boolean;
   /** True when the dim has no capability_test/outcomes yet (setup incomplete). */
   needsSetup?: boolean;
   /** No-progress counters maintained by the loop: setup/build cycles that did NOT advance this dim. */
@@ -61,7 +67,14 @@ export interface PlanOpts {
  *  a post-validation EDIT to 'stale', so this never lets a moved-goalpost dim read as done. */
 export function isDimDone(d: DimState, nowIso: string): boolean {
   if (d.frontierStatus === 'validated') return true;
-  return d.ceiling != null && isCeilingActive(d.ceiling, nowIso);
+  if (d.ceiling != null && isCeilingActive(d.ceiling, nowIso)) return true;
+  // FINISH-to-honest-ceiling (council 2026-06-23): a dim whose honest ceiling is BUILD-COMPLETE (no artifact-aligned
+  // demand bound) is DONE once its gate-derived score reaches 8.0 — it must NOT be pushed toward 9 (the demand gate
+  // would reject it, burning cycles). effectiveScore is already receipt-gated (a receiptless dim caps at 7.0), so
+  // >=8.0 means a real validate receipt exists — an honest done, not a convenience stop. A demand-bound dim keeps
+  // its 9.0 target and is NOT finished here.
+  const honest = resolveHonestTarget(d.id, { demandBound: d.demandBound });
+  return honest.profile === 'build-complete' && d.effectiveScore >= honest.target - 1e-9;
 }
 
 /**
@@ -156,7 +169,8 @@ export function planNextAction(allDims: DimState[], opts: PlanOpts): AscendActio
     const total = dims.length;
     const ceilinged = dims.filter(d => active(d)).length;
     const validated = dims.filter(d => d.frontierStatus === 'validated').length;
-    return { type: 'done', summary: `${validated}/${total} at validated frontier, ${ceilinged} at honest ceiling — all dims complete.` };
+    const buildComplete = dims.filter(d => !active(d) && d.frontierStatus !== 'validated' && isDimDone(d, opts.nowIso)).length;
+    return { type: 'done', summary: `${validated} validated frontier · ${buildComplete} BUILD-COMPLETE (8.0, no demand) · ${ceilinged} honest ceiling — all ${total} dims FINISHED.` };
   }
 
   const next = candidates[0]!;

@@ -162,6 +162,9 @@ export async function defaultBuildState(cwd: string): Promise<DimState[]> {
       ceiling,
       attempts: ledger.filter(a => a.dimId === dim.id).length,
       isMarketCapped: MARKET_DIMS.has(dim.id),
+      // FINISH-mode: a demand-grounded spec (evidence_ref has `harvest-demand:`) targets 9.0; otherwise the honest
+      // ceiling is 8.0 BUILD-COMPLETE and the loop finishes there instead of burning cycles pushing to 9.
+      demandBound: /(?:^|;)\s*harvest-demand:/.test((spec?.leader_target as { evidence_ref?: string } | undefined)?.evidence_ref ?? ''),
       needsSetup: d.capability_test === undefined || !Array.isArray(d.outcomes) || d.outcomes.length === 0,
     });
   }

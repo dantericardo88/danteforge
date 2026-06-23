@@ -12,7 +12,9 @@ const ROOT = path.join('X:\\tmp', `ascend-ledger-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 function dim(over: Partial<DimState> = {}): DimState {
-  return { id: 'd', effectiveScore: 8.0, frontierStatus: 'frozen', ceiling: null, attempts: 0, isMarketCapped: false, ...over };
+  // demandBound:true by default — these tests exercise the PUSH/court/ledger flow (a no-demand 8.0 dim now
+  // FINISHES instead of pushing; finish-mode is covered by the engine test).
+  return { id: 'd', effectiveScore: 8.0, frontierStatus: 'frozen', ceiling: null, attempts: 0, isMarketCapped: false, demandBound: true, ...over };
 }
 
 describe('parseCourtOutput — court output is read honestly (G3)', () => {

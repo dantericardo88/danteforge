@@ -11,7 +11,9 @@ const NOW = '2026-06-03T00:00:00.000Z';
 const MEMBERS: CouncilMemberId[] = ['codex', 'claude-code', 'grok-build'];
 
 function dim(id: string, score: number, over: Partial<DimState> = {}): DimState {
-  return { id, effectiveScore: score, frontierStatus: 'frozen', ceiling: null, attempts: 0, isMarketCapped: false, ...over };
+  // demandBound:true by default — these tests exercise the PUSH-to-9 fan-out (a no-demand 8.0 dim FINISHES;
+  // finish-mode is covered by the engine test).
+  return { id, effectiveScore: score, frontierStatus: 'frozen', ceiling: null, attempts: 0, isMarketCapped: false, demandBound: true, ...over };
 }
 
 describe('assignRound — weakest-N per member, file-overlap defer', () => {
