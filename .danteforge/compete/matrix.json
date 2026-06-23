@@ -335,6 +335,23 @@
           "timeout_ms": 120000,
           "required_callsite": "src/cli/commands/docs.ts",
           "description": "Docs command and CLI error-boundary tests execute."
+        },
+        {
+          "id": "developer_experience_t5_authored",
+          "tier": "T5",
+          "kind": "cli-smoke",
+          "cli_args": [
+            "doctor"
+          ],
+          "expected_exit": 0,
+          "expected_stdout_patterns": [
+            "→ Run: npm run verify",
+            "✔  Config                         Provider: ollama, API key: no",
+            "✔  Skills                         222 skills discovered"
+          ],
+          "required_callsite": "src/cli/commands/doctor.ts",
+          "timeout_ms": 120000,
+          "description": "Authored product run: `node dist/index.js doctor` — patterns verified stable across two consecutive runs."
         }
       ],
       "declared_ceiling": "T7",
@@ -2355,6 +2372,23 @@
           "description": "Singularity: at least 5% of recent commits are AI-assisted (DanteForge + Claude). Current: ~6%. [grounding: callsite unverifiable for a product-run — bounded by the orphan cap]",
           "timeout_ms": 15000,
           "required_callsite": "scripts/measure-singularity.mjs"
+        },
+        {
+          "id": "self_improvement_t5_authored",
+          "tier": "T5",
+          "kind": "cli-smoke",
+          "cli_args": [
+            "lessons"
+          ],
+          "expected_exit": 0,
+          "expected_stdout_patterns": [
+            "# Lessons Learned",
+            "_Source: verify failure_",
+            "_Source: party failure_"
+          ],
+          "required_callsite": "src/cli/commands/lessons.ts",
+          "timeout_ms": 120000,
+          "description": "Authored product run: `node dist/index.js lessons` — patterns verified stable across two consecutive runs."
         }
       ],
       "declared_ceiling": "T7",
