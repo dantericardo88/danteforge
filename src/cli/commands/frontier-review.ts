@@ -11,7 +11,7 @@ import path from 'node:path';
 import fs from 'node:fs/promises';
 import { loadMatrix, saveMatrix, type CompeteMatrix } from '../../core/compete-matrix.js';
 import { logger } from '../../core/logger.js';
-import { effectiveStatus, computeSpecHash, signValidation, verifyBuilderProvenance, type FrontierSpec } from '../../core/frontier-spec.js';
+import { effectiveStatus, computeSpecHash, signValidation, verifyBuilderProvenance, signClaim, type FrontierSpec } from '../../core/frontier-spec.js';
 import { runCIPCheck, type CIPResult } from '../../core/completion-integrity.js';
 import { writeCeilingReceipt } from '../../core/ceiling-receipt.js';
 import { enqueueAudit, type AuditEscrowEntry } from '../../core/audit-escrow.js';
@@ -228,6 +228,17 @@ export async function runFrontierReviewCli(options: FrontierReviewCliOptions): P
       await saveFn(matrix, cwd); validatedWritten = true;
       // Sample into the non-blocking human-audit queue (the court can't catch a perfect fixture).
       await enqueue(cwd, { dimId: options.dimId, kind: 'validated-9.0', ...auditBase });
+      // CLOSE THE LOOP (court-as-RULER, CH-063): on a GENUINE court validation, kernel-SIGN a frontier-claim
+      // receipt. A dim's graded_evaluator reads it (signedFrontierClaim) to close a non-gameable gap — so a
+      // climb's continuous score can only cross that gap when the HARDENED court (peer judges + CIP + provenance)
+      // attests the real capability. Agents cannot forge the kernel signature; this is the trusted attester the
+      // climb dogfood proved was the missing last mile — reusing the court we already trust, not a new anchor.
+      try {
+        const claim = `${options.dimId}_court_validated`;
+        const dir = path.join(cwd, '.danteforge', 'frontier-receipts');
+        await fs.mkdir(dir, { recursive: true });
+        await fs.writeFile(path.join(dir, `${claim}.json`), JSON.stringify({ claim, sig: signClaim(claim), validated_at: now }, null, 2) + '\n', 'utf8');
+      } catch { /* best-effort; the validated_by signature on the spec remains the source of truth */ }
     }
   } else if (result.verdict === 'VALIDATED' && cip && cip.blocksFrontierReached) {
     logger.warn(`[frontier-review] ${options.dimId}: court PASSED but CIP BLOCKS the 9.0 — ${cip.gaps.slice(0, 3).join('; ') || 'integrity audit failed'}`);

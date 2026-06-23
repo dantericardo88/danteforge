@@ -125,6 +125,31 @@ describe('frontier-review CLI — court verdict drives validated/ceiling', () =>
     assert.equal(dim.frontier_spec.status, 'validated');
   });
 
+  test('CH-063 court-as-RULER: a genuine court VALIDATION kernel-signs a frontier-claim receipt the climb reads', async () => {
+    const os = await import('node:os');
+    const pathMod = await import('node:path');
+    const fsp = await import('node:fs/promises');
+    const { randomUUID } = await import('node:crypto');
+    const { verifyClaim } = await import('../src/core/frontier-spec.js');
+    const dir = pathMod.join(os.tmpdir(), `court-attest-${process.pid}-${randomUUID().slice(0, 8)}`);
+    await fsp.mkdir(dir, { recursive: true });
+    try {
+      const r = await runFrontierReviewCli({
+        dimId: DIM, write: true, cwd: dir,
+        _loadMatrix: async () => matrix(frozenSpec()), _saveMatrix: async () => { /* the receipt uses real fs at cwd */ },
+        _discoverMembers: async () => MEMBERS,
+        _runJudge: async () => 'VERDICT: PASS\nCONFIDENCE: HIGH\nREASON: genuine',
+        _readArtifact: async () => '{}', _loadEvidence: async () => goodEvidence(),
+        _runCIP: async () => passCIP(), _enqueueAudit: async () => {}, _now: '2026-06-03T00:00:00.000Z',
+      });
+      assert.equal(r.validatedWritten, true);
+      const receiptPath = pathMod.join(dir, '.danteforge', 'frontier-receipts', `${DIM}_court_validated.json`);
+      const receipt = JSON.parse(await fsp.readFile(receiptPath, 'utf8')) as { claim: string; sig: string };
+      assert.equal(receipt.claim, `${DIM}_court_validated`);
+      assert.equal(verifyClaim(receipt.claim, receipt.sig), true, 'the court-signed receipt carries a valid kernel signature — agents cannot forge it; only a real validation produces it');
+    } finally { await fsp.rm(dir, { recursive: true, force: true }); }
+  });
+
   test('REJECTED does NOT set validated (builder cannot self-certify)', async () => {
     const m = matrix(frozenSpec());
     let saved = false;
