@@ -49,6 +49,14 @@ let active: KernelSigner = new LocalHmacSigner();
  *  pluggable rather than hardcoded to the in-process secret. */
 export function getKernelSigner(): KernelSigner { return active; }
 
+/** The active signer's provenance. `external` is FALSE for the in-blast-radius LocalHmacSigner — so a
+ *  court-validated frontier 9 signed by a non-external root is SELF-SIGNED (the scoring↔grading loop converging
+ *  on itself, not proven ground truth). It becomes TRUE only once an out-of-blast-radius signer is installed via
+ *  setKernelSigner (CH-045 — the operator's trust-provider decision). Provenance must never overclaim. */
+export function kernelSignerProvenance(): { id: string; external: boolean } {
+  return { id: active.id, external: active.id !== 'local-hmac' };
+}
+
 /** Install a different signing authority — the CH-045 slot-in point. An HSM / remote attester / quorum that
  *  holds the key outside the optimizer moves the trust root out of the blast radius. Also used by tests. */
 export function setKernelSigner(signer: KernelSigner): void { active = signer; }

@@ -18,7 +18,8 @@ import {
   type DimensionForScoring,
 } from '../../core/derived-score.js';
 import { TIER_SCORE_CAPS, type CapabilityTier } from '../../matrix/types/capability-test.js';
-import { scoreBand } from '../../core/score-bands.js';
+import { scoreBand, frontierTrustLabel } from '../../core/score-bands.js';
+import { kernelSignerProvenance } from '../../core/kernel-signer.js';
 import { splitFleetLanes } from '../../core/frontier-queue.js';
 import { LEGACY_NO_RECEIPT_CEILING } from '../../matrix/engines/receipt-ceiling.js';
 import { runHardenGate } from '../../matrix/engines/hardener.js';
@@ -316,6 +317,9 @@ function printGapReport(analyses: GapAnalysis[]): void {
       `(score: ${scoreColor(a.currentScore.toFixed(1))} · ${chalk.bold(band.label)} [${axisTag}], ` +
       `tier: ${a.currentTier}, ${tierLabel})`,
     );
+    // FRONTIER trust provenance (council 2026-06-23): a frontier score is only as grounded as its trust root.
+    const trust = frontierTrustLabel(a.currentScore, kernelSignerProvenance().external);
+    if (trust) logger.info(`    ${chalk.dim('trust:')} ${trust}`);
 
     if (a.blockers.length === 0) {
       logger.info(chalk.green('    ✓ No blockers'));

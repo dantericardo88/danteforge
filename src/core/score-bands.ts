@@ -107,3 +107,17 @@ export function scoreBandHeadline(score: number): string {
     : '';
   return `${score.toFixed(1)} · ${b.label} [${axisTag} axis]${terminal}`;
 }
+
+/**
+ * The TRUST label for a FRONTIER-band score (≥8.5), given whether the active kernel signer is external.
+ * The council's central honesty: a court-validated frontier 9 is only as grounded as its trust root. With an
+ * in-blast-radius signer (local-hmac), the scoring↔grading loop converges on ITSELF — self-signed, not proven
+ * ground truth. An out-of-blast-radius signer (CH-045) is what turns convergence into correctness. Pure: the
+ * caller passes `signerExternal` (from kernelSignerProvenance) so this module stays dependency-free.
+ */
+export function frontierTrustLabel(score: number, signerExternal: boolean): string {
+  if (score < 8.5) return ''; // BUILD axis — not a trust-anchored frontier claim
+  return signerExternal
+    ? 'externally anchored (out-of-blast-radius trust root)'
+    : 'SELF-SIGNED (local-hmac, in-blast-radius) — convergence, NOT proven ground truth; install an external signer (CH-045) to anchor it';
+}
