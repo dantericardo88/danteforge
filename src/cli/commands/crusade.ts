@@ -11,6 +11,7 @@ import { loadMatrix, computeGapPriority, decisionDimScore, type MatrixDimension,
 import { runCIPCheck, type CIPOptions, type CIPResult } from '../../core/completion-integrity.js';
 import { inferFailureKind, selectRecoveryAction, formatRecoveryPlan, type RecoveryContext } from '../../core/loop-recovery.js';
 import { buildCycleRecord, assessLoopHealth, type CycleRecord } from '../../matrix/engines/autonomy-loop-monitor.js';
+import { resolveHonestTarget } from '../../core/finish-ceiling.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -234,8 +235,10 @@ function buildCrusadeReport(result: CrusadeResult, goal: string): string {
 
 export async function runCrusade(options: CrusadeOptions): Promise<CrusadeResult> {
   const cwd = options.cwd ?? process.cwd();
-  const target = options.target ?? DEFAULT_TARGET;
   const dimension = options.dimension ?? DEFAULT_DIMENSION;
+  // Honest default target (council 2026-06-23): no-demand → BUILD-COMPLETE (8.0), market dim → 5.0. A demand-bound
+  // 9.0 stays opt-in via --target until CH-064 wires demand auto-detection into the canonical read path.
+  const target = options.target ?? resolveHonestTarget(dimension, {}).target;
   const maxCycles = options.maxCycles ?? DEFAULT_MAX_CYCLES;
   const maxOssPasses = options.maxOssPasses ?? DEFAULT_MAX_OSS_PASSES;
   const domains = (options.domains ?? dimension).split(',').map(d => d.trim()).filter(Boolean);
@@ -554,7 +557,11 @@ async function runDimensionFrontierLoop(
   options: FrontierCrusadeOptions,
 ): Promise<DimFrontierResult> {
   const cwd = options.cwd ?? process.cwd();
-  const target = options.target ?? DEFAULT_TARGET;
+  // Teleology unification (council 2026-06-23): the honest per-dim target is BUILD-COMPLETE (8.0) for a no-demand
+  // dim and 5.0 for a market dim — never a blanket 9.0 that makes the loop chase a frontier a build-complete dim
+  // can never honestly reach. (A demand-bound 9.0 is opt-in via --target until CH-064 wires demand auto-detection
+  // from the frozen frontier spec into this loop, so build and loop teleology then fully agree.)
+  const target = options.target ?? resolveHonestTarget(dim.id, {}).target;
   const maxDimCycles = options.maxDimCycles ?? 15;
   const stallThreshold = options.stallThreshold ?? 3;
   const stallDelta = options.stallDelta ?? 0.1;
