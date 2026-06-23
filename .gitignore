@@ -55,6 +55,16 @@ examples/todo-app/.danteforge/**
 .openhands/
 .continue/
 .cursor/
+.grok/
+
+# Generated reports / scratch artifacts (not source) — keep the tree clean for a public push
+out/
+mcps/
+logs/
+COUNCIL_CRUSADE_REPORT.md
+docs/api-ref.json
+gold.goldcheck2.json
+**/__pycache__/
 
 # Logs
 *.log
