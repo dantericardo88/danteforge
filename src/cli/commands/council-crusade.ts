@@ -96,7 +96,12 @@ function selectDims(
   let eligible = matrix.dimensions.filter(d => {
     if (excluded.has(d.id)) return false;
     if (d.status === 'closed') return false;
-    if (selfScore(d) >= target) return false;
+    // A dim the caller EXPLICITLY focused (--focus-dims / the graded climb loop) is built REGARDLESS of its
+    // stored self-score: the caller chose it deliberately — e.g. the climb knows the graded combined_score is
+    // below target even when the self-score is a stale fiction (the dogfood found this: a 9.0 self-score made
+    // council-crusade skip a dim the climb measured at 0.571). The self-score gate applies only to AUTO-selected dims.
+    const explicitlyFocused = !!focusDims && focusDims.includes(d.id);
+    if (!explicitlyFocused && selfScore(d) >= target) return false;
     if (focusDims && !focusDims.includes(d.id)) return false;
     return true;
   });
