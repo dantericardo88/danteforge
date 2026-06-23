@@ -223,7 +223,16 @@ export function computeDerivedScoreWithBreakdown(
       const entry = evidence.get(makeEvidenceKey(dim.id, outcome.id));
       if (now && entry && isEvidenceStale(tier, entry.ranAt, now)) {
         stale++;
-        continue; // treat stale evidence as not-passing
+        // LADDER SPLIT (council 2026-06-22, unanimous root-cause fix). The freshness TTL gates ONLY the
+        // OPERATIONAL tiers (T6+ = live telemetry / T8 live verify), which are irreducibly temporal. The
+        // CAPABILITY tiers (T0–T5) are SHA-stable: SHA-based eviction already invalidates their evidence on
+        // any code change (capability-test.ts:81-82), so a stale-but-passing capability rung must NOT break
+        // the contiguous walk and collapse strong evidence above it to ~4.0. Welding "the code works" (a
+        // SHA-stable fact) to "it's live right now" (a decaying fact) in one AND-chain is why every dim shows
+        // a broken ladder. Splitting at T5/T6 makes BUILDING converge to a real 8.0, with 8.5–9.5 floating as
+        // an additive live increment rather than a gate that drags the base down.
+        if (TIER_INDEX[tier] >= TIER_INDEX.T6) continue; // operational tier: stale telemetry = not-passing
+        // capability tier (T0–T5): fall through — stale-but-passing still counts (SHA-eviction is the guard).
       }
       if (isOutcomePassing(outcome, entry)) passing++;
     }
