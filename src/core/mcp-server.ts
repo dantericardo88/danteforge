@@ -18,6 +18,7 @@ import type { ArtifactType } from './context-economy/artifact-compressor.js';
 import { TOOL_DEFINITIONS } from './mcp-tool-definitions.js';
 import { DANTEFORGE_MCP_INSTRUCTIONS } from './mcp-server-instructions.js';
 import { toStructuredError, type McpStructuredError } from './mcp-error.js';
+import { searchTools, SEARCH_TOOLS_TOOL } from './tool-search.js';
 export { TOOL_DEFINITIONS } from './mcp-tool-definitions.js';
 import {
   handleAdoptionQueue,
@@ -71,6 +72,19 @@ export function jsonResult(data: unknown): ToolResult {
     content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
   };
 }
+
+// Searchable tool discovery (server-owned ecosystem_mcp slice): rank DanteForge's tools by a query so a host
+// can find the right one without paying the context cost of every schema.
+async function handleSearchToolsTool(args: Record<string, unknown>): Promise<ToolResult> {
+  const query = typeof args['query'] === 'string' ? (args['query'] as string) : '';
+  if (!query) return errorResult('Missing required parameter: query');
+  const limit = typeof args['limit'] === 'number' ? (args['limit'] as number) : 8;
+  const matches = searchTools(query, ALL_TOOL_DEFINITIONS, limit);
+  return jsonResult({ query, matches, total_tools: ALL_TOOL_DEFINITIONS.length });
+}
+
+// The full tool catalog = the static definitions plus the self-describing discovery tool.
+const ALL_TOOL_DEFINITIONS = [...TOOL_DEFINITIONS, SEARCH_TOOLS_TOOL];
 
 export function errorResult(message: string | McpStructuredError): ToolResult {
   const e = toStructuredError(message);
@@ -628,6 +642,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
   danteforge_convergence_status: (args) => handleConvergenceStatus(args),
   danteforge_git_activity: (args) => handleGitActivity(args),
   danteforge_health: (args) => handleHealth(args),
+  danteforge_search_tools: (args) => handleSearchToolsTool(args),
   // Phase L: search primitive
   danteforge_search_find_pattern: (args) => handleSearchFindPattern(args),
   danteforge_search_find_symbol: (args) => handleSearchFindSymbol(args),
@@ -704,7 +719,7 @@ export async function createAndStartMCPServer(): Promise<void> {
 
   // Register list-tools handler
   server.setRequestHandler(ListToolsRequestSchema, async (_request, _extra) => {
-    return { tools: TOOL_DEFINITIONS };
+    return { tools: ALL_TOOL_DEFINITIONS };
   });
 
   // Register call-tool handler
@@ -798,7 +813,7 @@ export function createMcpServer(sessionDeps: McpServerDeps = {}): ManualMcpServe
         }
 
         if (method === 'tools/list') {
-          return { jsonrpc: '2.0', id, result: { tools: TOOL_DEFINITIONS } };
+          return { jsonrpc: '2.0', id, result: { tools: ALL_TOOL_DEFINITIONS } };
         }
 
         if (method === 'tools/call') {
