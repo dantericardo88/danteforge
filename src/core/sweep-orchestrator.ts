@@ -11,7 +11,7 @@
 // Autonomy never targets above 9.0.
 
 import { logger } from './logger.js';
-import { snapshotBands, bandCounts, type ScoreBand } from './dim-band.js';
+import { snapshotBands, bandCounts, type DimScoreBucket } from './dim-band.js';
 import { clampAutonomousTarget } from './autonomy-cap.js';
 import type { CompeteMatrix } from './compete-matrix.js';
 
@@ -32,8 +32,8 @@ export interface SweepOpts {
 
 export interface SweepResult {
   phasesRun: string[];
-  bandsBefore: Record<ScoreBand, number>;
-  bandsAfter: Record<ScoreBand, number>;
+  bandsBefore: Record<DimScoreBucket, number>;
+  bandsAfter: Record<DimScoreBucket, number>;
   stoppedEarly?: string;
   /** Dims that were depth-waved but did NOT advance — surfaced for re-triage on the next cycle. */
   stalledDims: string[];

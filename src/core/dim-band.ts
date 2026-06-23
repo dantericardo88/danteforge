@@ -6,7 +6,7 @@ import { decisionDimScore, MARKET_DIMS_SCORE_CAP, MARKET_DIM_MAX_SCORE } from '.
 import { MAX_AUTONOMOUS_TARGET } from './autonomy-cap.js';
 import type { MatrixDimension, CompeteMatrix } from './compete-matrix.js';
 
-export type ScoreBand = 'below5' | 'fiveToSeven' | 'sevenToNine' | 'done';
+export type DimScoreBucket = 'below5' | 'fiveToSeven' | 'sevenToNine' | 'done';
 
 export interface DimBandState {
   id: string;
@@ -16,7 +16,7 @@ export interface DimBandState {
   hasOutcomes: boolean;
   /** At an honest maximum — the autonomous 9.0 ceiling, an operator/market ceiling, or a human-closing strategy. */
   atCeiling: boolean;
-  band: ScoreBand;
+  band: DimScoreBucket;
 }
 
 type BandDim = MatrixDimension & {
@@ -26,7 +26,7 @@ type BandDim = MatrixDimension & {
 };
 
 /** The score band, ignoring ceilings (autonomy tops out at 9.0 → 'done'). */
-export function bandFor(score: number): ScoreBand {
+export function bandFor(score: number): DimScoreBucket {
   if (score >= MAX_AUTONOMOUS_TARGET) return 'done';
   if (score >= 7.0) return 'sevenToNine';
   if (score >= 5.0) return 'fiveToSeven';
@@ -62,8 +62,8 @@ export function snapshotBands(matrix: CompeteMatrix): DimBandState[] {
 }
 
 /** Count of dims in each band — the campaign dashboard. */
-export function bandCounts(states: DimBandState[]): Record<ScoreBand, number> {
-  const counts: Record<ScoreBand, number> = { below5: 0, fiveToSeven: 0, sevenToNine: 0, done: 0 };
+export function bandCounts(states: DimBandState[]): Record<DimScoreBucket, number> {
+  const counts: Record<DimScoreBucket, number> = { below5: 0, fiveToSeven: 0, sevenToNine: 0, done: 0 };
   for (const s of states) counts[s.band]++;
   return counts;
 }
