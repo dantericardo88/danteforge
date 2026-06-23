@@ -4,7 +4,7 @@
 > It drives **that** project to each dimension's **honest ceiling** (not a blanket 9) using DanteForge's parallel
 > multi-agent council: **two council members each own a DIFFERENT dimension and spin up 4 sub-agents to build it,
 > while the third judges (builder-never-judges).** Project-agnostic — it reads the project's own matrix.
-> Rewritten 2026-06-23 for the three-axis honest model (council-unanimous).
+> Rewritten 2026-06-23 for the three-axis honest model; finish-mode + `danteforge finish` now live (council-unanimous).
 
 ---
 
@@ -32,7 +32,8 @@ Each dimension's honest ceiling (council-unanimous; encoded in `src/core/finish-
 
 ## Step 1 — see THIS project's dimensions + scores (don't assume)
 ```bash
-danteforge compete status        # the project's dimensions + current scores
+danteforge finish                # START HERE: each dim vs its HONEST ceiling + whether the project is FINISHED
+danteforge compete status        # the raw dimensions + current scores
 ```
 The `danteforge` CLI is globally npm-linked — available in every Dante project, no build step. (Only if you changed
 the DanteForge CLI source itself do you run `npm run build` in the DanteForge repo.)
@@ -59,17 +60,18 @@ danteforge ascend-frontier --parallel \
 ```
 - `--parallel` — each member owns a different dim, builds in an **isolated git worktree** (4 sub-agents/member by
   default; lower with `--slots-per-member <2-8>` on a laptop).
-- **Interpret each result against its HONEST target from RULE 1** — a no-demand dim that lands at 8.0 is FINISHED,
-  not "1.0 below 9." (Finish-mode auto-targeting via `finish-ceiling.ts` is being wired into the planner; until then,
-  read the ceiling manually with `danteforge gap --all`.)
+- **FINISH-MODE is wired** — `ascend-frontier` now STOPS a no-demand dim at 8.0 BUILD-COMPLETE (it is not pushed
+  toward a 9 the demand gate would reject); only a demand-bound dim (a frozen `harvest-demand:` spec) is pushed to 9.
+  Read the live status with **`danteforge finish`** — a no-demand dim at 8.0 reads FINISHED, not "1.0 below 9."
 
 ## The route past 8.0 — operator/dogfood feedback IS demand (the honest path to 9)
 Once you START USING the finished tool, your real feedback grounds the engineering frontier — it flows through the
 demand loop **identically to a competitor's demand**, with three enforced safeguards:
 1. **File it as a real, dated GitHub issue on this repo** (durable + externally-held; a local note the agent can
    rewrite does NOT count). `harvest-demand --repos <this repo>` then picks it up.
-2. **Dated BEFORE the build that satisfies it** — `demand-temporal.ts` rejects post-hoc demand (anti-fabrication;
-   the demand must provably pre-date the artifact).
+2. **Dated BEFORE the build that satisfies it** — ENFORCED in `checkHarvestProvenance` via `demand-temporal.ts`
+   (post-hoc demand is rejected, fail-closed). File the issue BEFORE you build; the gate verifies the ordering.
+   (Auto-activation of this gate is pending one data-flow wiring; until then, file-before-build is your discipline.)
 3. **Satisfied + court-confirmed** — the artifact must demonstrably clear the ask and the demand-satisfaction court
    (builder-never-judges, `ATTRIBUTION: PASS` fail-closed) must validate it.
 A 9 earned this way is **honestly stamped SELF-SIGNED** (local-hmac signer = convergence, not proven ground truth)
