@@ -773,6 +773,11 @@ for (const dim of m.dimensions) {
 
   // Skip excluded dimensions
   if (dim.weight === 0) {
+    // A market-capped dim must never show derived > 5.0, even when EXCLUDED. This skip used to `continue`
+    // before the MARKET_DIM_CAP clamp, leaving a stale inflated score in the published matrix — the exact
+    // honesty bug the council found (community_adoption stored derived=9 while the canonical finish path
+    // correctly caps it at 5.0). Clamp here so the mirror scorer can't publish an uncapped market dim.
+    if (MARKET_DIMS.has(dim.id) && (dim.scores?.derived ?? 0) > MARKET_DIM_CAP) dim.scores.derived = MARKET_DIM_CAP;
     console.log(`${dim.id.padEnd(32)} 0.0    —         —        —        EXCLUDED`);
     if (!m.excludedDimensions) m.excludedDimensions = [];
     if (!m.excludedDimensions.includes(dim.id)) m.excludedDimensions.push(dim.id);

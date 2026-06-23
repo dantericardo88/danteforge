@@ -44,7 +44,7 @@
     "SmolaAgents",
     "DSPy"
   ],
-  "lastUpdated": "2026-06-23T21:38:01.215Z",
+  "lastUpdated": "2026-06-23T22:42:57.984Z",
   "overallSelfScore": 6.5,
   "excludedDimensions": [
     "community_adoption",
@@ -2715,7 +2715,7 @@
         "Dagger": 7,
         "Kilo Code": 6,
         "re_gent": 6,
-        "derived": 9
+        "derived": 5
       },
       "gap_to_leader": 8.5,
       "leader": "Cursor",

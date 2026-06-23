@@ -7,12 +7,15 @@
 // This is the structural twin of the no-stub-scanner: stubs are rejected
 // at merge time; unexecuted code is capped at score-read time.
 //
-// Score tiers enforced here:
-//   ≤5.0  — code exists, unit tests pass (no outcomes declared)
-//   ≤7.0  — production callsite wired (no passing receipt yet)
-//   ≤8.5  — receipt on disk, passed=true, fresh ≤ 30 days (T6 cap)
-//   ≤9.5  — receipt fresh ≤ 7 days (above T6 multi-receipt tier)
-//   ≤10.0 — multi-receipt + live verify (handled by the full outcome system)
+// Score tiers (canonical source: TIER_SCORE_CAPS + TIER_FRESHNESS_MS in matrix/types/capability-test.ts —
+// NOT duplicated here, to honor "relabel never renumber"; this module enforces ONLY the ≤7.0 legacy fallback
+// below, the full ladder lives in derived-score.ts):
+//   ≤5.0  — code exists, unit tests pass (no outcomes declared)            [T2]
+//   ≤7.0  — production callsite wired (no passing receipt yet)             [T4]
+//   ≤8.0  — wired + smoke-passing real product run — BUILD-COMPLETE        [T5]
+//   ≤8.5  — dated external benchmark receipt vs a named competitor         [T6]
+//   ≤9.0  — court-validated best-in-class + multi-receipt consensus        [T7]
+//   ≤9.5  — repeated / fresh external superiority                          [T8]
 //
 // For dims that HAVE outcomes declared, the tier-based derived-score system
 // (derived-score.ts + outcome-runner.ts) already enforces the correct caps.
