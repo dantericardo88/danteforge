@@ -16,6 +16,7 @@ import { getMcpRateLimiter, type RateLimiter } from './rate-limiter.js';
 import { getEconomizedArtifactForContext } from './context-economy/runtime.js';
 import type { ArtifactType } from './context-economy/artifact-compressor.js';
 import { TOOL_DEFINITIONS } from './mcp-tool-definitions.js';
+import { DANTEFORGE_MCP_INSTRUCTIONS } from './mcp-server-instructions.js';
 export { TOOL_DEFINITIONS } from './mcp-tool-definitions.js';
 import {
   handleAdoptionQueue,
@@ -694,7 +695,7 @@ export const TOOL_HANDLERS: Record<string, ToolHandler> = {
 export async function createAndStartMCPServer(): Promise<void> {
   const server = new Server(
     { name: 'danteforge', version: '0.17.0' },
-    { capabilities: { tools: {} } },
+    { capabilities: { tools: {} }, instructions: DANTEFORGE_MCP_INSTRUCTIONS },
   );
 
   // Register list-tools handler
@@ -787,6 +788,7 @@ export function createMcpServer(sessionDeps: McpServerDeps = {}): ManualMcpServe
               protocolVersion: params['protocolVersion'] ?? '2024-11-05',
               capabilities: { tools: {} },
               serverInfo: { name: 'danteforge', version: '0.17.0' },
+              instructions: DANTEFORGE_MCP_INSTRUCTIONS,
             },
           };
         }
