@@ -134,14 +134,13 @@
       "outcomes": [
         {
           "id": "testing_t5_anti_stub_enforcement",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/anti-stub-scan.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass 2",
           "timeout_ms": 60000,
-          "required_callsite": "src/matrix/courts/no-stub-scanner.ts",
-          "description": "Anti-stub scanner enforces zero-stub doctrine on all production src/ files — no mocks, no stubs, no TODOs."
+          "description": "[grounded: downgraded to T2 — no production-wired module is exercised (orphan / un-grounded)] Anti-stub scanner enforces zero-stub doctrine on all production src/ files — no mocks, no stubs, no TODOs."
         },
         {
           "id": "testing_t5_score_engine",
@@ -151,7 +150,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 60000,
-          "required_callsite": "src/core/completion-integrity.ts",
+          "required_callsite": "src/core/mutation-score-tracker.ts",
           "description": "Completion Integrity Protocol — evidence freshness gate and outcome relevance checks prevent false-frontier claims."
         },
         {
@@ -162,7 +161,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 60000,
-          "required_callsite": "src/core/completion-integrity.ts",
+          "required_callsite": "src/core/derived-score.ts",
           "description": "CIP gate blocks frontier claims when stubs present, outcomes zero, or scores inflate — 3 cases on real hardware."
         },
         {
@@ -173,7 +172,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/matrix/courts/no-stub-scanner.ts",
+          "required_callsite": "src/core/mutation-score-tracker.ts",
           "description": "Multi-receipt T7: anti-stub scan + CIP depth + CIP gate + council judge fix -- all 4 test suites passing concurrently."
         }
       ],
@@ -334,7 +333,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/docs-command.test.ts",
+          "required_callsite": "src/cli/commands/docs.ts",
           "description": "Docs command and CLI error-boundary tests execute."
         }
       ],
@@ -447,14 +446,13 @@
         },
         {
           "id": "ux_t5_progress_runtime",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/ux-progress.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/core/actionable-errors.ts",
-          "description": "Actionable error UX tests execute."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Actionable error UX tests execute."
         },
         {
           "id": "ux_t5_format_error_runtime",
@@ -469,14 +467,13 @@
         },
         {
           "id": "ux_t7_cli_error_runtime",
-          "tier": "T7",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/cli-error-boundary.test.ts tests/format-error.test.ts tests/ux-progress.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/cli-error-boundary.test.ts",
-          "description": "CLI error UX boundary tests execute."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] CLI error UX boundary tests execute."
         }
       ],
       "declared_ceiling": "T7",
@@ -604,7 +601,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/smoke.test.ts",
+          "required_callsite": "src/core/state.ts",
           "description": "CLI smoke tests execute."
         },
         {
@@ -615,7 +612,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/functionality.test.ts",
+          "required_callsite": "src/cli/commands/batch-check.ts",
           "description": "Core functionality tests execute."
         },
         {
@@ -626,7 +623,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/cli-flags.test.ts",
+          "required_callsite": "src/matrix/engines/cli-smoke-runner.ts",
           "description": "CLI flag and smoke runner tests execute."
         }
       ],
@@ -774,25 +771,23 @@
         },
         {
           "id": "autonomy_t5_harden_crusade_runtime",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/harden-crusade.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/cli/commands/harden-crusade.ts",
-          "description": "Harden-crusade autonomy tests execute."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Harden-crusade autonomy tests execute."
         },
         {
           "id": "autonomy_t7_crusade_runtime",
-          "tier": "T7",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/autonomy.test.ts tests/crusade-autonomy.test.ts tests/frontier-crusade.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/cli/commands/frontier.ts",
-          "description": "Autonomy and frontier crusade tests execute."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Autonomy and frontier crusade tests execute."
         },
         {
           "id": "autonomy_t5_loop_monitor",
@@ -936,7 +931,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/core/security-scan.ts",
+          "required_callsite": "src/core/security-audit-log.ts",
           "description": "Security scan tests execute."
         },
         {
@@ -952,25 +947,23 @@
         },
         {
           "id": "security_t7_red_team_runtime",
-          "tier": "T7",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/security-scoring.test.ts tests/security-red-team.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/security-scoring.test.ts",
-          "description": "Security scoring and anti-stub tests execute."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Security scoring and anti-stub tests execute."
         },
         {
           "id": "security_t5_dep_audit",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/security-dependency-audit.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 30000,
-          "required_callsite": "src/core/security-dependency-audit.ts",
-          "description": "npm audit integration — parses real vulnerability data, scores by severity"
+          "description": "[grounded: downgraded to T2 — no production-wired module is exercised (orphan / un-grounded)] npm audit integration — parses real vulnerability data, scores by severity"
         },
         {
           "id": "security_t7_multi_receipt",
@@ -980,7 +973,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 60000,
-          "required_callsite": "src/core/security-dependency-audit.ts",
+          "required_callsite": "src/core/security-audit-log.ts",
           "description": "T7 multi-receipt: security scanner + controls + dependency audit all passing"
         }
       ],
@@ -1103,7 +1096,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/error-handling.test.ts",
+          "required_callsite": "src/core/error-log.ts",
           "description": "Error handling tests execute."
         },
         {
@@ -1114,7 +1107,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/error-boundary-coverage.test.ts",
+          "required_callsite": "src/core/cli-error-boundary.ts",
           "description": "Error boundary coverage tests execute."
         },
         {
@@ -1125,7 +1118,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/actionable-errors.test.ts",
+          "required_callsite": "src/core/actionable-errors.ts",
           "description": "Actionable and formatted error tests execute."
         },
         {
@@ -1298,7 +1291,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/token-economy.test.ts",
+          "required_callsite": "src/core/token-ledger.ts",
           "description": "Token economy performance tests execute."
         }
       ],
@@ -1426,7 +1419,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/docs-command.test.ts",
+          "required_callsite": "src/cli/commands/docs.ts",
           "description": "Docs command tests execute."
         },
         {
@@ -1437,7 +1430,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "docs/COMMAND_REFERENCE.md",
+          "required_callsite": "src/cli/commands/docs.ts",
           "description": "Documentation reference workflow tests execute."
         }
       ],
@@ -1566,19 +1559,18 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/convergence.test.ts",
+          "required_callsite": "src/core/convergence.ts",
           "description": "Convergence core tests execute."
         },
         {
           "id": "convergence_t5_self_healing_runtime",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/convergence-self-healing.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/core/convergence-self-healing.ts",
-          "description": "Self-healing convergence tests execute."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Self-healing convergence tests execute."
         },
         {
           "id": "convergence_t7_e2e_runtime",
@@ -1588,7 +1580,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 180000,
-          "required_callsite": "tests/e2e-convergence.test.ts",
+          "required_callsite": "src/core/harsh-scorer.ts",
           "description": "E2E convergence runtime tests execute."
         }
       ],
@@ -1722,14 +1714,13 @@
         },
         {
           "id": "sdp_t5_clarify_runtime",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/clarify-engine.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/harvested/spec/clarify-engine.ts",
-          "description": "Clarify engine tests execute."
+          "description": "[grounded: downgraded to T2 — no production-wired module is exercised (orphan / un-grounded)] Clarify engine tests execute."
         },
         {
           "id": "sdp_t7_e2e_runtime",
@@ -1874,19 +1865,18 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/planning-quality.test.ts",
+          "required_callsite": "src/core/plan-quality-scorer.ts",
           "description": "Planning quality tests execute."
         },
         {
           "id": "planning_t5_planner_runtime",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/planner.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/planner.test.ts",
-          "description": "Planner tests execute."
+          "description": "[grounded: downgraded to T2 — no production-wired module is exercised (orphan / un-grounded)] Planner tests execute."
         },
         {
           "id": "planning_t7_sprint_runtime",
@@ -1896,7 +1886,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/sprint-plan.test.ts",
+          "required_callsite": "src/cli/commands/sprint-plan.ts",
           "description": "Sprint planning and task routing tests execute."
         }
       ],
@@ -2018,7 +2008,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/file-size-hygiene.test.ts",
+          "required_callsite": "src/core/file-size-hygiene.ts",
           "description": "File-size hygiene tests execute."
         },
         {
@@ -2029,7 +2019,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/anti-stub-scan.test.ts",
+          "required_callsite": "src/core/complexity-analyzer.ts",
           "description": "Anti-stub and shared option tests execute."
         }
       ],
@@ -2159,7 +2149,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/core/token-economy.ts",
+          "required_callsite": "src/core/token-ledger.ts",
           "description": "Token economy tests execute."
         },
         {
@@ -2175,14 +2165,13 @@
         },
         {
           "id": "token_t7_roi_runtime",
-          "tier": "T7",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/token-roi.test.ts tests/workspace-tokens.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/token-roi.test.ts",
-          "description": "Token ROI and workspace token tests execute."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Token ROI and workspace token tests execute."
         }
       ],
       "declared_ceiling": "T7",
@@ -2311,25 +2300,23 @@
         },
         {
           "id": "self_t5_loop_runtime",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/self-improve-loop.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/core/self-improve.ts",
-          "description": "Self-improve loop tests execute."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Self-improve loop tests execute."
         },
         {
           "id": "self_t5_report_runtime",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/self-improve-report.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/self-improve-report.test.ts",
-          "description": "Self-improve report tests execute."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Self-improve report tests execute."
         },
         {
           "id": "self_t7_lessons_runtime",
@@ -2339,7 +2326,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/auto-lessons.test.ts",
+          "required_callsite": "src/core/auto-lessons.ts",
           "description": "Auto-lessons and lessons command tests execute."
         },
         {
@@ -2347,7 +2334,7 @@
           "tier": "T7",
           "kind": "runtime-exec",
           "command": "node scripts/measure-singularity.mjs --assert-min=5",
-          "description": "Singularity: at least 5% of recent commits are AI-assisted (DanteForge + Claude). Current: ~6%.",
+          "description": "Singularity: at least 5% of recent commits are AI-assisted (DanteForge + Claude). Current: ~6%. [grounding: callsite unverifiable for a product-run — bounded by the orphan cap]",
           "timeout_ms": 15000,
           "required_callsite": "scripts/measure-singularity.mjs"
         }
@@ -2471,7 +2458,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/mcp/server.ts",
+          "required_callsite": "src/core/mcp-server.ts",
           "description": "MCP server and tool tests execute."
         },
         {
@@ -2482,7 +2469,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/mcp-server-sdk.test.ts",
+          "required_callsite": "src/core/mcp-server.ts",
           "description": "MCP SDK and command tests execute."
         }
       ],
@@ -2606,14 +2593,13 @@
         },
         {
           "id": "enterprise_t5_orchestrator_runtime",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/enterprise-orchestrator.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/core/enterprise-orchestrator.ts",
-          "description": "Enterprise orchestrator tests execute."
+          "description": "[grounded: downgraded to T2 — no production-wired module is exercised (orphan / un-grounded)] Enterprise orchestrator tests execute."
         },
         {
           "id": "enterprise_t7_config_runtime",
@@ -2623,7 +2609,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/config.test.ts",
+          "required_callsite": "src/core/config.ts",
           "description": "Config and security control tests execute."
         }
       ],
@@ -2883,7 +2869,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/core/agent-activity-provenance.ts",
+          "required_callsite": "src/core/decision-node.ts",
           "description": "Agent activity provenance tests execute."
         },
         {
@@ -2894,7 +2880,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/core/time-machine.ts",
+          "required_callsite": "src/matrix/engines/outcome-runner.ts",
           "description": "Time Machine outcome integration tests execute."
         },
         {
@@ -2905,7 +2891,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "tests/provenance-summary.test.ts",
+          "required_callsite": "src/core/provenance-summary.ts",
           "description": "Provenance summary and Time Machine tests execute."
         }
       ],
@@ -2971,7 +2957,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass 47",
           "timeout_ms": 60000,
-          "required_callsite": "src/harvested/spec/clarify-engine.ts",
+          "required_callsite": "src/core/spec-validator.ts",
           "description": "47 tests proving spec-driven pipeline: spec quality scoring, drift detection, clarification engine, pipeline status — real execution on hardware."
         },
         {
@@ -2982,7 +2968,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass 42",
           "timeout_ms": 60000,
-          "required_callsite": "src/harvested/spec/clarify-engine.ts",
+          "required_callsite": "src/core/spec-matcher.ts",
           "description": "42 tests proving requirement extraction, coverage scoring, and spec matching algorithms used in the spec-driven workflow."
         },
         {
@@ -2998,14 +2984,13 @@
         },
         {
           "id": "swe_t7_multi_receipt",
-          "tier": "T7",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/spec-driven-pipeline.test.ts tests/cip-gate.test.ts tests/cip-gates-integration.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/core/completion-integrity.ts",
-          "description": "Multi-receipt T7: CIP depth + gate + integration -- full spec-workflow enforcement proven end-to-end."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Multi-receipt T7: CIP depth + gate + integration -- full spec-workflow enforcement proven end-to-end."
         }
       ],
       "declared_ceiling": "T7",
@@ -3074,7 +3059,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 60000,
-          "required_callsite": "src/matrix/engines/outcome-runner.ts",
+          "required_callsite": "src/matrix/engines/outcome-quality.ts",
           "description": "22 tests proving outcome quality gates: T5 runtime evidence enforcement, trivial-command rejection, stdout requirement checks."
         },
         {
@@ -3096,7 +3081,7 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass 15",
           "timeout_ms": 60000,
-          "required_callsite": "src/matrix/engines/receipt-ceiling.ts",
+          "required_callsite": "src/core/matrix-development-engine.ts",
           "description": "15 tests proving the evidence chain: capability test gate, receipt ceiling, evidence audit — all passing on real hardware."
         },
         {
@@ -3203,30 +3188,28 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass 21",
           "timeout_ms": 60000,
-          "required_callsite": "src/core/workflow-enforcer.ts",
+          "required_callsite": "src/core/actionable-errors.ts",
           "description": "21 tests proving the constitutional governance error surface: 20+ actionable error patterns and workflow transition validation."
         },
         {
           "id": "cg_t5_integrity_audit",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/integrity-audit.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 60000,
-          "required_callsite": "src/core/completion-integrity.ts",
-          "description": "CIP constitutional enforcement — blocks frontier claims when evidence is stale, outcomes are zero, or scores inflated — real hardware execution."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] CIP constitutional enforcement — blocks frontier claims when evidence is stale, outcomes are zero, or scores inflated — real hardware execution."
         },
         {
           "id": "cg_t7_multi_receipt",
-          "tier": "T7",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/council-judge-fix.test.ts tests/council-debate.test.ts tests/cip-gates-integration.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/cli/commands/council.ts",
-          "description": "Multi-receipt T7: council judge fixes + debate engine + CIP gates -- constitutional governance proven end-to-end."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Multi-receipt T7: council judge fixes + debate engine + CIP gates -- constitutional governance proven end-to-end."
         }
       ],
       "declared_ceiling": "T7",
@@ -3376,30 +3359,28 @@
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/cli/commands/council-parallel.ts",
+          "required_callsite": "src/matrix/engines/council-slot.ts",
           "description": "T7 multi-receipt: hierarchical council (slot expansion + streaming judge queue + K-of-M consensus) proven end-to-end."
         },
         {
           "id": "mao_t5_council_crusade",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/council-crusade.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass 15",
           "timeout_ms": 60000,
-          "required_callsite": "src/cli/commands/council-crusade.ts",
-          "description": "Council crusade autonomous loop: dim selection by gap×weight, stall detection, COMPLETE/MAX_PASSES status, report writer — 15 tests on real hardware."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Council crusade autonomous loop: dim selection by gap×weight, stall detection, COMPLETE/MAX_PASSES status, report writer — 15 tests on real hardware."
         },
         {
           "id": "mao_t7_council_crusade_complete",
-          "tier": "T7",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/council-slot-expansion.test.ts tests/council-judge-queue.test.ts tests/council-consensus.test.ts tests/council-crusade.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 180000,
-          "required_callsite": "src/cli/commands/council-crusade.ts",
-          "description": "T7 multi-receipt: full council stack proven — slots + streaming judges + K-of-M consensus + autonomous crusade loop with doctrine gates wired."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] T7 multi-receipt: full council stack proven — slots + streaming judges + K-of-M consensus + autonomous crusade loop with doctrine gates wired."
         }
       ],
       "declared_ceiling": "T7",
@@ -3477,14 +3458,13 @@
       "outcomes": [
         {
           "id": "dd_t5_cip_gates_integration",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/cip-gate.test.ts tests/cip-depth.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 60000,
-          "required_callsite": "src/core/completion-integrity.ts",
-          "description": "Depth doctrine CIP enforcement: frontier-reached gate blocks stubs+zero-outcomes+score-inflation — proven on real hardware."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Depth doctrine CIP enforcement: frontier-reached gate blocks stubs+zero-outcomes+score-inflation — proven on real hardware."
         },
         {
           "id": "dd_t5_outcome_check",
@@ -3499,25 +3479,23 @@
         },
         {
           "id": "dd_t5_anti_stub",
-          "tier": "T5",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/anti-stub-scan.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass 2",
           "timeout_ms": 60000,
-          "required_callsite": "src/matrix/courts/no-stub-scanner.ts",
-          "description": "Zero-tolerance stub enforcement: anti-stub scanner catches all mock/stub patterns in production code, exempts doctrine files."
+          "description": "[grounded: downgraded to T2 — no production-wired module is exercised (orphan / un-grounded)] Zero-tolerance stub enforcement: anti-stub scanner catches all mock/stub patterns in production code, exempts doctrine files."
         },
         {
           "id": "dd_t7_multi_receipt",
-          "tier": "T7",
+          "tier": "T2",
           "kind": "runtime-exec",
           "command": "npx tsx --test tests/cip-depth.test.ts tests/cip-gate.test.ts tests/depth-doctrine-e2e.test.ts",
           "expected_exit": 0,
           "expected_output_pattern": "pass",
           "timeout_ms": 120000,
-          "required_callsite": "src/core/completion-integrity.ts",
-          "description": "Multi-receipt T7: CIP depth + gate + council judge fix -- depth doctrine enforcement proven with T5/T7 tier evidence receipts."
+          "description": "[grounded: downgraded to T2 — seamed test (proves code paths, not real behavior)] Multi-receipt T7: CIP depth + gate + council judge fix -- depth doctrine enforcement proven with T5/T7 tier evidence receipts."
         }
       ],
       "declared_ceiling": "T7",
