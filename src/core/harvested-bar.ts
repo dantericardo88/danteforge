@@ -25,6 +25,7 @@ import type { FrontierSpec } from './frontier-spec.js';
 import { TODO_RE, GROUNDING_GATE_THRESHOLD } from './frontier-spec.js';
 import { verifyHarvestedSignalSignature } from './harvested-signal-signer.js';
 import { classifyAddressedActor } from './attribution-gate.js';
+import { demandPredatesArtifact } from './demand-temporal.js';
 
 export type HarvestKind = 'benchmark' | 'capability' | 'demand';
 
@@ -35,6 +36,9 @@ export interface HarvestedSignal {
   source: string;
   /** ISO timestamp the fact was fetched from the world. */
   fetched_at: string;
+  /** DEMAND signals: ISO timestamp the demand was FILED in the world (the issue's createdAt). The anti-fabrication
+   *  temporal gate requires this to predate the artifact build, so post-hoc "demand" can't ground a frontier score. */
+  demand_created_at?: string;
   /** The human-readable claim this signal grounds (what the competitor does / what users demand). */
   claim: string;
   /** Benchmark signals: the published frontier score. 0-1 (a pass_rate) is normalized to 0-10. */
@@ -188,6 +192,11 @@ export interface HarvestProvenanceOptions {
    *  kernel signature (default: the same DANTEFORGE_REQUIRE_SIGNED_EVIDENCE switch as CH-025, so
    *  signature enforcement flips on in lockstep). Off by default: signals can be migrated first. */
   requireSigned?: boolean;
+  /** When provided, the anti-fabrication TEMPORAL gate fires on demand bars: every demand must have been FILED
+   *  (demand_created_at) strictly BEFORE this artifact-build timestamp, else it is post-hoc (fabricated to match
+   *  what was already shipped) and is rejected. Fail-closed: a demand with no parseable createdAt cannot prove it
+   *  predates the build. Omit it to skip the temporal check (backward-compatible for existing callers). */
+  artifactBuiltAt?: string;
 }
 
 /**
@@ -269,6 +278,12 @@ export function checkHarvestProvenance(
       errors.push(`demand bar from "${src}" is not verified_live — re-fetch the real issue URLs + reaction counts (the count is the external truth). Demand clears on a signed re-fetch, no human ratify needed.`);
     } else if (!signed(backing)) {
       errors.push(`demand bar from "${src}" carries verified_live but no valid kernel signature (CH-030) — sign it via signedHarvestedSignal after the re-fetch.`);
+    } else if (opts.artifactBuiltAt) {
+      // ANTI-FABRICATION TEMPORAL GATE (council 2026-06-23): the demand must have been FILED before the artifact
+      // that claims to satisfy it — else it is post-hoc (built X, then filed "I want X" to justify the score).
+      // Fires only when the caller supplies the build timestamp (e.g. the earliest validate-receipt time).
+      const t = demandPredatesArtifact(backing.demand_created_at, opts.artifactBuiltAt);
+      if (!t.ok) errors.push(`demand bar from "${src}": ${t.reason}`);
     }
   }
 
