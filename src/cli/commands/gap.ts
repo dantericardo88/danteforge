@@ -51,6 +51,8 @@ export interface GapCliOptions {
   json?: boolean;
   cwd?: string;
   _loadMatrix?: typeof loadMatrix;
+  /** Data-only: compute + return the analyses without printing (so other commands can reuse the scores). */
+  _quiet?: boolean;
 }
 
 export interface GapCliResult {
@@ -105,6 +107,10 @@ export async function runGapCli(options: GapCliOptions): Promise<GapCliResult> {
     analyses.push(analysis);
   }
 
+  if (options._quiet) {
+    // data-only: other commands (e.g. `danteforge finish`) reuse gap's canonical scores without its print.
+    return { dimensions: analyses };
+  }
   if (options.json) {
     process.stdout.write(JSON.stringify({ dimensions: analyses }, null, 2) + '\n');
   } else {

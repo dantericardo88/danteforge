@@ -3,6 +3,26 @@ import type { Command } from 'commander';
 type Commands = Awaited<typeof import('./commands/index.js')>;
 
 export function registerDossierCommands(program: Command, _C: () => Promise<Commands>): void {
+// â”€â”€ finish: report each dim vs its HONEST ceiling + whether the project is FINISHED â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+program
+  .command('finish')
+  .description('Report each dimension vs its HONEST ceiling (market→5, no-demand→8.0, demand-bound→9) + whether the project is FINISHED')
+  .option('--json', 'machine-readable output')
+  .option('--cwd <path>', 'project directory')
+  .action((opts) => {
+    void (async () => {
+      try {
+        const { runFinishCli } = await import('./commands/finish.js');
+        const o = opts as { json?: boolean; cwd?: string };
+        await runFinishCli({ json: o.json, cwd: o.cwd });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'finish');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 // â”€â”€ Dossier command group â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const dossierGroup = program
   .command('dossier')
