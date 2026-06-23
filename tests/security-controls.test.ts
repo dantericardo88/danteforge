@@ -56,7 +56,7 @@ describe('validateSecurityControls', () => {
 
   it('checkSecrets reports tracked credential assignments with file and line evidence', async () => {
     const repo = await createGitRepo({
-      'src/config.ts': 'export const apiKey = "sk-abcdefghijklmnopqrstuvwxyz123456";\n',
+      'src/config.ts': 'export const apiKey = "sk-abcdefghijklmnopqrstuvwxyz123456";\n', // pragma: allowlist secret
     });
 
     const result = await validateSecurityControls({ checkSecrets: true, cwd: repo });
@@ -66,6 +66,31 @@ describe('validateSecurityControls', () => {
       result.issues.some((issue) => issue.includes('src/config.ts:1') && issue.includes('credential-assignment')),
       `expected file evidence in issues, got ${JSON.stringify(result.issues)}`,
     );
+  });
+
+  it('checkSecrets reports high-entropy generic credentials', async () => {
+    const repo = await createGitRepo({
+      'src/provider.ts': 'export const providerToken = "J8n4Hf7Qp2Zx9Lm5Rt3Vy6Wb1Cd0Kq4Ns8Pu";\n', // pragma: allowlist secret
+    });
+
+    const result = await validateSecurityControls({ checkSecrets: true, cwd: repo });
+
+    assert.equal(result.secretsSecure, false);
+    assert.ok(
+      result.issues.some((issue) => issue.includes('src/provider.ts:1') && issue.includes('high-entropy-secret')),
+      `expected high-entropy secret evidence in issues, got ${JSON.stringify(result.issues)}`,
+    );
+  });
+
+  it('checkSecrets honors explicit allowlist markers for known fixtures', async () => {
+    const repo = await createGitRepo({
+      'tests/fixtures.ts': 'export const fakeApiKey = "sk-abcdefghijklmnopqrstuvwxyz123456"; // pragma: allowlist secret\n',
+    });
+
+    const result = await validateSecurityControls({ checkSecrets: true, cwd: repo });
+
+    assert.equal(result.secretsSecure, true);
+    assert.deepEqual(result.issues, []);
   });
 
   it('checkSecrets runs without throwing', async () => {

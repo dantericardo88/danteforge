@@ -15,7 +15,7 @@ import { logger } from '../core/logger.js';
 import { enforceWorkflow } from '../core/workflow-enforcer.js';
 import { formatAndLogError } from '../core/format-error.js';
 import { logStructuredError } from '../core/error-log.js';
-import { findClosestCommand, formatCommandSuggestion } from '../core/command-suggest.js';
+import { findCommandSuggestions, formatCommandSuggestions } from '../core/command-suggest.js';
 import { registerLateCommands } from './register-late-commands.js';
 import { registerDossierCommands } from './register-dossier-commands.js';
 import { registerCoreCommands } from './register-core-commands.js';
@@ -759,12 +759,9 @@ if (!new Set(['economy', 'mcp-server']).has(stateWarmupCommand ?? '')) {
 program.on('command:*', (operands: string[]) => {
   const unknown = operands[0] ?? '';
   const knownNames = program.commands.map(c => c.name());
-  const suggestion = findClosestCommand(unknown, knownNames);
-  if (suggestion) {
-    logger.error(formatCommandSuggestion(unknown, suggestion));
-  } else {
-    logger.error(`Unknown command "${unknown}". Run "danteforge --help" for available commands.`);
-  }
+  const suggestions = findCommandSuggestions(unknown, knownNames)
+    .map((suggestion) => suggestion.command);
+  logger.error(formatCommandSuggestions(unknown, suggestions));
   process.exitCode = 1;
 });
 

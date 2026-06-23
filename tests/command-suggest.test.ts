@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import {
   levenshteinDistance,
   findClosestCommand,
+  findCommandSuggestions,
   formatCommandSuggestion,
+  formatCommandSuggestions,
 } from '../src/core/command-suggest.js';
 
 // ---------------------------------------------------------------------------
@@ -104,6 +106,52 @@ describe('findClosestCommand', () => {
 });
 
 // ---------------------------------------------------------------------------
+// findCommandSuggestions
+// ---------------------------------------------------------------------------
+
+describe('findCommandSuggestions', () => {
+  const COMMANDS = [
+    'forge',
+    'verify',
+    'score',
+    'ship',
+    'showcase',
+    'time-machine',
+    'timeline',
+    'matrix-kernel',
+  ];
+
+  it('returns ranked close matches instead of only the single closest command', () => {
+    const result = findCommandSuggestions('sore', COMMANDS, { limit: 3 });
+
+    assert.deepEqual(
+      result.map((item) => item.command),
+      ['score', 'forge'],
+    );
+    assert.ok(result[0]!.confidence > result[1]!.confidence);
+  });
+
+  it('handles hyphen/underscore/camel-free command spelling variants', () => {
+    const result = findCommandSuggestions('time_machine', COMMANDS, { limit: 2 });
+
+    assert.equal(result[0]?.command, 'time-machine');
+    assert.equal(findClosestCommand('matrixkernel', COMMANDS), 'matrix-kernel');
+  });
+
+  it('does not suggest commands that are too dissimilar after ranking', () => {
+    const result = findCommandSuggestions('zzzzzzz', COMMANDS, { limit: 3 });
+
+    assert.deepEqual(result, []);
+  });
+
+  it('deduplicates repeated command names while preserving the best-ranked entry', () => {
+    const result = findCommandSuggestions('verfy', ['verify', 'verify', 'verily'], { limit: 5 });
+
+    assert.deepEqual(result.map((item) => item.command), ['verify', 'verily']);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // formatCommandSuggestion
 // ---------------------------------------------------------------------------
 
@@ -128,5 +176,33 @@ describe('formatCommandSuggestion', () => {
     const msg = formatCommandSuggestion('foo', 'forge');
     const quoteCount = (msg.match(/"/g) ?? []).length;
     assert.equal(quoteCount, 4, 'should have 4 double-quote characters');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// formatCommandSuggestions
+// ---------------------------------------------------------------------------
+
+describe('formatCommandSuggestions', () => {
+  it('formats a single suggestion through the existing compact message', () => {
+    const msg = formatCommandSuggestions('foreg', ['forge']);
+
+    assert.equal(msg, 'Unknown command "foreg". Did you mean "forge"?');
+  });
+
+  it('formats multiple suggestions as runnable commands plus help fallback', () => {
+    const msg = formatCommandSuggestions('sore', ['score', 'forge', 'ship']);
+
+    assert.ok(msg.includes('Unknown command "sore". Did you mean one of these?'));
+    assert.ok(msg.includes('  danteforge score'));
+    assert.ok(msg.includes('  danteforge forge'));
+    assert.ok(msg.includes('  danteforge ship'));
+    assert.ok(msg.includes('Run "danteforge --help" for the full command list.'));
+  });
+
+  it('falls back to the generic help message when there are no suggestions', () => {
+    const msg = formatCommandSuggestions('zzzzzzz', []);
+
+    assert.equal(msg, 'Unknown command "zzzzzzz". Run "danteforge --help" for available commands.');
   });
 });

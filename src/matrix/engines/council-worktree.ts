@@ -214,11 +214,30 @@ export async function captureWorktreeDiff(
 
 export async function getChangedFiles(worktreePath: string): Promise<string[]> {
   try {
-    const { stdout } = await execFileAsync('git', ['status', '--porcelain'], { cwd: worktreePath, timeout: 10_000 });
-    return stdout.split('\n')
-      .map(l => l.trim()).filter(Boolean)
-      .map(l => l.slice(l.indexOf(' ')).trim());
+    const { stdout } = await execFileAsync('git', ['status', '--porcelain=v1', '-z', '--untracked-files=all'], { cwd: worktreePath, timeout: 10_000 });
+    const files: string[] = [];
+    const records = stdout.split('\0').filter(Boolean);
+    for (let i = 0; i < records.length; i++) {
+      const record = records[i]!;
+      if (record.length < 4) continue;
+      const status = record.slice(0, 2);
+      files.push(record.slice(3));
+      if (status.includes('R') || status.includes('C')) i++;
+    }
+    return files;
   } catch { return []; }
+}
+
+export async function collectChangedFilesForHandles(
+  handles: CouncilWorktreeHandle[],
+): Promise<Map<string, string[]>> {
+  const entries = await Promise.all(
+    handles.map(async (handle) => [
+      handle.worktreePath,
+      await getChangedFiles(handle.worktreePath),
+    ] as const),
+  );
+  return new Map(entries);
 }
 
 /**

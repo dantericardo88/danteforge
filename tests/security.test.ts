@@ -473,6 +473,22 @@ describe('securityScan', () => {
     assert.equal(keyFinding?.risk, 'CRITICAL');
   });
 
+  it('redacts detected secrets from finding snippets', async () => {
+    const files = { '/proj/src/hardcoded.ts': FAKE_FILES['/proj/src/hardcoded.ts'] };
+    const result = await securityScan({
+      cwd: '/proj',
+      _glob: makeTestGlob(files),
+      _readFile: makeTestReadFile(files),
+      _stdout: () => {},
+      _setExitCode: () => {},
+    });
+
+    const keyFinding = result.findings.find((f) => f.patternId === 'hardcoded-api-key');
+    assert.ok(keyFinding, 'Should detect hardcoded sk- key');
+    assert.ok(!keyFinding.snippet.includes('sk-abcdefghijklmnopqrstuvwxyz123456789'));
+    assert.ok(keyFinding.snippet.includes('sk-****'), `expected redacted snippet, got: ${keyFinding.snippet}`);
+  });
+
   it('sets passed=false and exitCode=1 when CRITICAL findings exist', async () => {
     const files = { '/proj/src/dangerous.ts': FAKE_FILES['/proj/src/dangerous.ts'] };
     let exitCode = 0;

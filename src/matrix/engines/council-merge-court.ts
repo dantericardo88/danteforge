@@ -22,7 +22,7 @@ import { runAdapter } from '../adapters/adapter-interface.js';
 import type { WorkPacket } from '../types/work-graph.js';
 import type { AgentLease } from '../types/lease.js';
 import type { CouncilWorktreeHandle } from './council-worktree.js';
-import { captureWorktreeDiff, getChangedFiles, makeReadOnlyLease } from './council-worktree.js';
+import { captureWorktreeDiff, collectChangedFilesForHandles, makeReadOnlyLease } from './council-worktree.js';
 import type { CouncilWorktreeOpts } from './council-worktree.js';
 import { runDebate } from './council-debate.js';
 import { runRevision } from './council-revision.js';
@@ -96,6 +96,7 @@ export interface MergeCourtOptions {
    * final judging.
    */
   judgeOnly?: boolean;
+  changedFilesByWorktree?: ReadonlyMap<string, string[]>;
 }
 
 // ── Judge adapter factory (judge-mode only) ───────────────────────────────────
@@ -228,14 +229,14 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
   });
   const assignmentByWorktree = new Map(reviewPlan.assignments.map(assignment => [assignment.worktreePath, assignment]));
   const anonymizationMap = reviewPlan.anonymizationMap;
+  const changedFilesByWorktree = opts.changedFilesByWorktree ?? await collectChangedFilesForHandles(opts.handles);
 
   for (const handle of opts.handles) {
     const builderId = handle.memberId as CouncilMemberId;
     const reviewAssignment = assignmentByWorktree.get(handle.worktreePath);
     const candidateId = reviewAssignment?.candidateId ?? builderId;
 
-    let diff = await captureWorktreeDiff(handle, opts.worktreeOpts);
-    const changedFiles = await getChangedFiles(handle.worktreePath);
+    const changedFiles = changedFilesByWorktree.get(handle.worktreePath) ?? [];
 
     if (changedFiles.length === 0) {
       logger.info(`[merge-court] ${candidateId} (${builderId}): no changes — skipping judge phase`);
@@ -260,6 +261,8 @@ export async function runMergeCourt(opts: MergeCourtOptions): Promise<MergeCourt
         continue;
       }
     }
+
+    let diff = await captureWorktreeDiff(handle, opts.worktreeOpts);
 
     // Streaming pre-computed verdict fast-path: if this slot was already judged by
     // the streaming judge queue and the verdict was PASS, skip re-judging — but

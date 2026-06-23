@@ -16,8 +16,6 @@
 // Usage: danteforge council --parallel --goal "..." [--loop] [--rounds N]
 import path from 'node:path';
 import fs from 'node:fs/promises';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import chalk from 'chalk';
 import { logger } from '../../core/logger.js';
 import { discoverCouncil } from './council.js';
@@ -31,7 +29,7 @@ import {
   createCouncilWorktrees,
   createCouncilWorktreesForSlots,
   removeCouncilWorktrees,
-  getChangedFiles,
+  collectChangedFilesForHandles,
 } from '../../matrix/engines/council-worktree.js';
 import type { CouncilWorktreeHandle } from '../../matrix/engines/council-worktree.js';
 import {
@@ -63,8 +61,6 @@ import type { AgentLease } from '../../matrix/types/lease.js';
 import { runCIPCheck } from '../../core/completion-integrity.js';
 import { createTimeMachineCommit } from '../../core/time-machine.js';
 import { loadMatrix } from '../../core/compete-matrix.js';
-
-const execFileAsync = promisify(execFile);
 
 export interface ParallelCouncilOptions {
   cwd?: string;
@@ -518,8 +514,9 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
       }
 
       // Register file claims BEFORE merge court to detect cross-member conflicts
+      const changedByWorktree = await collectChangedFilesForHandles(handles);
       for (const handle of handles) {
-        const changed = await getChangedFiles(handle.worktreePath);
+        const changed = changedByWorktree.get(handle.worktreePath) ?? [];
         const claim = fileClaims.claim(
           handle.memberId as CouncilMemberId,
           changed,
@@ -565,6 +562,7 @@ export async function runParallelCouncil(options: ParallelCouncilOptions): Promi
         fileClaims,
         minJudges: effectiveMinJudges,
         preComputedConsensus: slotMode ? judgeQueue.getStreamingVerdicts() : undefined,
+        changedFilesByWorktree: changedByWorktree,
       });
 
       // Quorum-degradation provenance (self-challenge #4): a thin pool used to lower the judge

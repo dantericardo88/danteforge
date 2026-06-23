@@ -233,6 +233,28 @@ const SECRET_PATTERNS: Array<{ kind: string; regex: RegExp }> = [
   },
 ];
 
+const SECRET_ALLOWLIST_MARKERS = [
+  'pragma: allowlist secret',
+  'gitleaks:allow',
+  'danteforge: allow-secret-fixture',
+];
+
+const QUOTED_SECRET_ASSIGNMENT_REGEX =
+  /\b([A-Za-z_$][\w$-]*)\b\s*[:=]\s*(['"`])([^'"`\s]{32,})(\2)/g;
+
+const MIN_HIGH_ENTROPY_BITS_PER_CHAR = 4.0;
+const MIN_HIGH_ENTROPY_CHARACTER_CLASSES = 3;
+const CREDENTIAL_NAME_FRAGMENTS = [
+  'apikey',
+  'accesstoken',
+  'authtoken',
+  'providertoken',
+  'clientsecret',
+  'privatekey',
+  'password',
+  'secret',
+];
+
 function isSecretScanCandidate(relativePath: string): boolean {
   const normalized = relativePath.replace(/\\/g, '/');
   if (
@@ -253,19 +275,108 @@ function lineNumberAt(content: string, index: number): number {
   return line;
 }
 
+function lineTextAt(content: string, index: number): string {
+  const start = content.lastIndexOf('\n', Math.max(0, index - 1)) + 1;
+  const end = content.indexOf('\n', index);
+  return content.slice(start, end === -1 ? content.length : end);
+}
+
+function isSecretAllowlistedLine(line: string): boolean {
+  const normalized = line.toLowerCase();
+  return SECRET_ALLOWLIST_MARKERS.some((marker) => normalized.includes(marker));
+}
+
+function shannonEntropyBitsPerChar(value: string): number {
+  const counts = new Map<string, number>();
+  for (const char of value) {
+    counts.set(char, (counts.get(char) ?? 0) + 1);
+  }
+
+  let entropy = 0;
+  for (const count of counts.values()) {
+    const probability = count / value.length;
+    entropy -= probability * Math.log2(probability);
+  }
+  return entropy;
+}
+
+function characterClassCount(value: string): number {
+  return [
+    /[a-z]/.test(value),
+    /[A-Z]/.test(value),
+    /\d/.test(value),
+    /[-_+/=]/.test(value),
+  ].filter(Boolean).length;
+}
+
+function isCredentialLikeName(name: string): boolean {
+  const normalized = name.replace(/[_-]/g, '').toLowerCase();
+  return CREDENTIAL_NAME_FRAGMENTS.some((fragment) => normalized.includes(fragment)) ||
+    normalized.endsWith('token');
+}
+
+function isLikelyHighEntropySecret(value: string): boolean {
+  if (value.length < 32) return false;
+  if (characterClassCount(value) < MIN_HIGH_ENTROPY_CHARACTER_CLASSES) return false;
+  if (new Set(value).size < 12) return false;
+  return shannonEntropyBitsPerChar(value) >= MIN_HIGH_ENTROPY_BITS_PER_CHAR;
+}
+
+function scanHighEntropySecretAssignments(
+  relativePath: string,
+  content: string,
+  alreadyFlaggedLines: Set<number>,
+): SecretFinding[] {
+  const findings: SecretFinding[] = [];
+  QUOTED_SECRET_ASSIGNMENT_REGEX.lastIndex = 0;
+
+  let match: RegExpExecArray | null;
+  while ((match = QUOTED_SECRET_ASSIGNMENT_REGEX.exec(content)) !== null) {
+    const lineText = lineTextAt(content, match.index);
+    if (isSecretAllowlistedLine(lineText)) continue;
+
+    const line = lineNumberAt(content, match.index);
+    if (alreadyFlaggedLines.has(line)) continue;
+
+    const name = match[1] ?? '';
+    if (!isCredentialLikeName(name)) continue;
+
+    const value = match[3] ?? '';
+    if (!isLikelyHighEntropySecret(value)) continue;
+
+    findings.push({
+      relativePath,
+      line,
+      kind: 'high-entropy-secret',
+    });
+    alreadyFlaggedLines.add(line);
+  }
+
+  return findings;
+}
+
 function scanContentForSecrets(relativePath: string, content: string): SecretFinding[] {
   const findings: SecretFinding[] = [];
+  const flaggedLines = new Set<number>();
+
   for (const pattern of SECRET_PATTERNS) {
     pattern.regex.lastIndex = 0;
     let match: RegExpExecArray | null;
     while ((match = pattern.regex.exec(content)) !== null) {
+      const lineText = lineTextAt(content, match.index);
+      if (isSecretAllowlistedLine(lineText)) continue;
+
+      const line = lineNumberAt(content, match.index);
       findings.push({
         relativePath,
-        line: lineNumberAt(content, match.index),
+        line,
         kind: pattern.kind,
       });
+      flaggedLines.add(line);
     }
   }
+
+  findings.push(...scanHighEntropySecretAssignments(relativePath, content, flaggedLines));
   return findings;
 }
 

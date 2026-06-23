@@ -363,8 +363,13 @@ export function effectiveStatus(spec: FrontierSpec): FrontierSpecStatus {
 }
 
 /** Marks an unauthored spec field. Exported so the spec completer can tell scaffold sentinels
- *  apart from authored values without re-implementing (and drifting from) the guardrail's test. */
-export const TODO_RE = /TODO/i;
+ *  apart from authored values without re-implementing (and drifting from) the guardrail's test.
+ *
+ *  Anchored to the START of the field (2026-06-23 fix): every `frontier-spec init` placeholder begins with
+ *  "TODO" ("TODO: name the competitor…", kind:"TODO"), and a real authored field NEVER does. The old
+ *  /TODO/i matched "TODO" ANYWHERE, so a legitimate researched bar describing what governance BLOCKS — e.g.
+ *  "merge with stub/TODO" — was falsely flagged as an unfilled placeholder and could not be frozen. */
+export const TODO_RE = /^\s*TODO\b/i;
 
 /** The real-exercise floor: a frontier evidence run must take at least this long — instant
  *  commands prove nothing. SINGLE SOURCE for session-record's Guard 3 AND the spec completer's

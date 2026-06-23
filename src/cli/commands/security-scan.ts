@@ -4,7 +4,7 @@
 
 import fs from 'fs/promises';
 import path from 'path';
-import { logger } from '../../core/logger.js';
+import { logger, maskSecrets } from '../../core/logger.js';
 import { validateSecurityControls } from '../../core/security-controls.js';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -106,6 +106,37 @@ function isCommentLine(line: string): boolean {
   return trimmed.startsWith('//') || trimmed.startsWith('*') || trimmed.startsWith('/*');
 }
 
+const CREDENTIAL_SNIPPET_ASSIGNMENT_REGEX =
+  /\b([A-Za-z_$][\w$-]*)\b(\s*[:=]\s*)(['"`])([^'"`\s]{8,})(\3)/g;
+
+const CREDENTIAL_NAME_FRAGMENTS = [
+  'apikey',
+  'accesstoken',
+  'authtoken',
+  'providertoken',
+  'clientsecret',
+  'privatekey',
+  'password',
+  'secret',
+];
+
+function isCredentialLikeName(name: string): boolean {
+  const normalized = name.replace(/[_-]/g, '').toLowerCase();
+  return CREDENTIAL_NAME_FRAGMENTS.some((fragment) => normalized.includes(fragment)) ||
+    normalized.endsWith('token');
+}
+
+function redactFindingSnippet(line: string): string {
+  const maskedKnownProviders = maskSecrets(line.trim());
+  return maskedKnownProviders.replace(
+    CREDENTIAL_SNIPPET_ASSIGNMENT_REGEX,
+    (match, name: string, separator: string, quote: string, _value: string, closingQuote: string) => {
+      if (!isCredentialLikeName(name)) return match;
+      return `${name}${separator}${quote}****${closingQuote}`;
+    },
+  );
+}
+
 // ── Scanner ───────────────────────────────────────────────────────────────────
 
 async function scanFile(
@@ -136,7 +167,7 @@ async function scanFile(
           risk: pattern.risk,
           patternId: pattern.id,
           description: pattern.description,
-          snippet: line.trim().slice(0, 120),
+          snippet: redactFindingSnippet(line).slice(0, 120),
         });
       }
     }

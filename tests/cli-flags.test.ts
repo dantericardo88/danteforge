@@ -1,10 +1,22 @@
 // CLI integration tests - Commander.js flag parsing via direct tsx invocation
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { runTsxCli } from './helpers/cli-runner.ts';
 
 function runCli(...args: string[]) {
   return runTsxCli(args);
+}
+
+function runCliInTemp(...args: string[]) {
+  const cwd = mkdtempSync(path.join(tmpdir(), 'danteforge-cli-'));
+  try {
+    return runTsxCli(args, { cwd });
+  } finally {
+    rmSync(cwd, { recursive: true, force: true });
+  }
 }
 
 describe('CLI flag parsing', () => {
@@ -72,6 +84,17 @@ describe('CLI flag parsing', () => {
     // Commander shows unknown command error or help text
     assert.ok(status !== 0 || combined.includes('unknown') || combined.includes('help'),
       'Unknown command should produce error or help');
+  });
+
+  it('unknown command typo shows ranked runnable suggestions', () => {
+    const { stdout, stderr, status } = runCliInTemp('compte');
+    const combined = stdout + stderr;
+
+    assert.notEqual(status, 0);
+    assert.ok(combined.includes('Did you mean one of these?'), combined);
+    assert.ok(combined.includes('danteforge compete'), combined);
+    assert.ok(combined.includes('danteforge compact'), combined);
+    assert.ok(combined.includes('danteforge --help'), combined);
   });
 
   it('forge without state exits with non-zero status', () => {
