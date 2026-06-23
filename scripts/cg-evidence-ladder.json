@@ -1,0 +1,8 @@
+{
+  "callsite": "src/core/frontier-spec.ts",
+  "rungs": [
+    { "command": "node dist/index.js gov-demo receipt-integrity --out out/gov-receipt-integrity.json", "artifact": "out/gov-receipt-integrity.json", "description": "kernel-signed receipt integrity: receipt forgery, content-tamper, and provenance dimension/builder-binding all rejected" },
+    { "command": "node dist/index.js gov-demo score-surface-ownership --out out/gov-score-surface-ownership.json", "artifact": "out/gov-score-surface-ownership.json", "description": "the kernel-owned score surface (matrix.json, score-proposals, outcome-evidence, universe bar) is structurally forbidden to build workers" },
+    { "command": "node dist/index.js gov-demo judge-independence --out out/gov-judge-independence.json", "artifact": "out/gov-judge-independence.json", "description": "builders are excluded from judging their own dim; a kernel-signed token seats a peer; a forged token falls to the safe floor" }
+  ]
+}

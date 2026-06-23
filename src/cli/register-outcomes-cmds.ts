@@ -141,6 +141,24 @@ program
   });
 
 program
+  .command('gov-demo <surface>')
+  .description('Live demonstration of a constitutional_governance policy-engine surface (receipt-integrity | score-surface-ownership | judge-independence). Real product run; writes a judge-inspectable artifact; exits non-zero on a governance regression.')
+  .option('--out <path>', 'Artifact path (defaults to out/gov-<surface>.json)')
+  .option('--json', 'Machine-readable JSON output')
+  .action((surface: string, opts) => {
+    void (async () => {
+      try {
+        const { runGovDemoCli } = await import('./commands/gov-demo.js');
+        await runGovDemoCli({ surface, out: opts.out as string | undefined, json: opts.json as boolean | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'gov-demo');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('evidence-ladder <dimId>')
   .description('Author a clean, integrity-passing push-tier evidence ladder BY CONSTRUCTION (council 2026-06-23). Given a wired callsite + >=3 distinct product demonstrations, it reaches a court-ready T7 via real execution or names the precise violation.')
   .requiredOption('--config <path>', 'JSON config: { callsite, rungs:[{command,artifact,description}] }')
