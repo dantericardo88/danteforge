@@ -24,6 +24,7 @@
 import type { FrontierSpec } from './frontier-spec.js';
 import { TODO_RE, GROUNDING_GATE_THRESHOLD } from './frontier-spec.js';
 import { verifyHarvestedSignalSignature } from './harvested-signal-signer.js';
+import { classifyAddressedActor } from './attribution-gate.js';
 
 export type HarvestKind = 'benchmark' | 'capability' | 'demand';
 
@@ -163,6 +164,19 @@ export function seedLeaderTargetFromHarvest(spec: FrontierSpec, signals: Harvest
     const joined = [...new Set(tags)].join('; ');
     lt.evidence_ref = lt.evidence_ref ? `${lt.evidence_ref}; ${joined}` : joined;
   }
+
+  // ATTRIBUTION teeth wiring (council unanimous 2026-06-23): set the actor fields at seed time so
+  // applyFrontierGate's attribution cap actually FIRES (Grok's gap: they were schema-only/read-only).
+  //   - addressed_actor: deterministic from the harvested DEMAND text — the requester's own words, NOT
+  //     builder-controlled. This is the non-gameable half: a host-filed demand reads 'host' no matter what.
+  //   - artifact_actor: the role this dim's ARTIFACT plays, derived from its own run_command + callsite +
+  //     observed_capability. A builder-influenced default that the court's ATTRIBUTION check then verifies.
+  // When a demand bar's addressed_actor != artifact_actor, the demand-9 structurally caps at 8.5.
+  const demandSig = bestSignal(signals, 'demand');
+  if (demandSig) spec.addressed_actor = classifyAddressedActor(demandSig.claim);
+  const artifactCtx = `${spec.real_user_path.run_command} ${spec.real_user_path.required_callsite} ${lt.observed_capability}`;
+  spec.artifact_actor = classifyAddressedActor(artifactCtx);
+
   return { spec, seeded, tags };
 }
 
