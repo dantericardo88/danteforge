@@ -36,7 +36,7 @@ describe('assistant skill install', () => {
     const { installAssistantSkills } = await import('../src/core/assistant-installer.js');
     const result = await installAssistantSkills({ homeDir, skillsDir });
 
-    assert.deepStrictEqual(result.assistants.map(entry => entry.assistant).sort(), ['antigravity', 'claude', 'codex', 'opencode']);
+    assert.deepStrictEqual(result.assistants.map(entry => entry.assistant).sort(), ['antigravity', 'claude', 'codex', 'grok', 'opencode']);
     await fs.access(path.join(homeDir, '.codex', 'skills', 'example-skill', 'SKILL.md'));
     await fs.access(path.join(homeDir, '.claude', 'skills', 'example-skill', 'SKILL.md'));
     await fs.access(path.join(homeDir, '.gemini', 'antigravity', 'skills', 'example-skill', 'SKILL.md'));
