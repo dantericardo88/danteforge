@@ -31,10 +31,7 @@ function makeDim(
     weight,
     category: 'features',
     frequency: 'medium',
-    // derived mirrors self so the fixture reads as a legitimately-scored (evidence-backed) dim. decisionDimScore
-    // now caps a no-outcomes / no-derived dim at 7.0 (the 2026-06-23 inflation fix), so a fixture asserting a dim is
-    // "at target ≥8" must carry a derived score — a raw self-claim alone is honestly unverified, not at target.
-    scores: { self, derived: self },
+    scores: { self },
     gap_to_leader: 9 - self,
     leader: 'cursor',
     gap_to_closed_source_leader: 9 - self,
