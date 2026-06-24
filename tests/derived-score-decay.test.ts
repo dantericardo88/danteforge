@@ -72,14 +72,16 @@ describe('score decay — fresh evidence always passes', () => {
 });
 
 describe('score decay — stale evidence treated as not-passing', () => {
-  it('T5 evidence 8 days old drops score to T4 cap', () => {
+  it('T5 evidence 8 days old STILL counts — capability tiers do not time-decay (SHA-eviction is the guard)', () => {
     const now = new Date('2026-05-25T12:00:00Z');
     const dim = makeDim([makeOutcome('t4', 'T4'), makeOutcome('t5', 'T5')]);
     const evidence = makeEvidenceMap([
       makeEntry('t4', 'T4', true, agoMs(now, 60 * 60 * 1000)),
       makeEntry('t5', 'T5', true, agoMs(now, 8 * 24 * 60 * 60 * 1000)),
     ]);
-    assert.equal(computeDerivedScore(dim, evidence, now), TIER_SCORE_CAPS.T4);
+    // Ladder split (derived-score.ts:226-235, council 2026-06-22): T0–T5 are SHA-stable, so a stale-but-passing
+    // capability rung still counts — only T6+ OPERATIONAL tiers time-decay. So the T5 rung holds → score stays T5.
+    assert.equal(computeDerivedScore(dim, evidence, now), TIER_SCORE_CAPS.T5);
   });
 
   it('T7 evidence 8 days old drops score to T5 cap', () => {
@@ -105,14 +107,15 @@ describe('score decay — stale evidence treated as not-passing', () => {
     assert.equal(computeDerivedScore(dim, evidence, now), TIER_SCORE_CAPS.T5);
   });
 
-  it('all evidence stale → score = 0', () => {
+  it('all T5 evidence stale → still counts (capability tiers do not time-decay)', () => {
     const now = new Date('2026-05-25T12:00:00Z');
     const stale = agoMs(now, 30 * 24 * 60 * 60 * 1000);
     const dim = makeDim([makeOutcome('a', 'T5'), makeOutcome('b', 'T5')]);
     const evidence = makeEvidenceMap([
       makeEntry('a', 'T5', true, stale), makeEntry('b', 'T5', true, stale),
     ]);
-    assert.equal(computeDerivedScore(dim, evidence, now), 0);
+    // Capability tier: SHA-eviction (not time) is the guard, so stale-but-passing T5 rungs still hold at T5.
+    assert.equal(computeDerivedScore(dim, evidence, now), TIER_SCORE_CAPS.T5);
   });
 });
 
@@ -129,9 +132,11 @@ describe('score decay — breakdown includes stale counts', () => {
     const t5row = breakdown.perTier.find(r => r.tier === 'T5');
     assert.ok(t5row, 'T5 row should exist');
     assert.equal(t5row!.declared, 3);
-    assert.equal(t5row!.passing, 1);
+    // Capability tier: stale-but-passing rungs still count toward passing (SHA-eviction is the guard), so all 3
+    // pass — but the stale COUNT is still tracked for diagnostics/visibility.
+    assert.equal(t5row!.passing, 3);
     assert.equal(t5row!.stale, 2);
-    assert.equal(t5row!.allPassing, false);
+    assert.equal(t5row!.allPassing, true);
   });
 
   it('perTier.stale is 0 when now is not passed', () => {
