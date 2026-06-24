@@ -23,6 +23,28 @@ program
     })();
   });
 
+// ── ps: reign a lazy verb ("fix the bug") into a resolve-then-proceed task contract (DFPP intake) ──
+program
+  .command('ps <goal...>')
+  .description('Problem-solve intake: reign a lazy verb (fix the bug / optimize this) into a resolve-then-proceed task contract')
+  .option('--symptom <text>', 'what is wrong, from your point of view')
+  .option('--done <text>', 'definition of done — what concretely proves it resolved')
+  .option('--scope <text>', 'scope boundary — what must NOT change')
+  .option('--lens <lens>', 'analysis frame: debugging|architecture|performance|security|devops|frontend|tech-lead')
+  .action((goalParts, opts) => {
+    void (async () => {
+      try {
+        const { psCommand } = await import('./commands/ps.js');
+        const o = opts as { symptom?: string; done?: string; scope?: string; lens?: string };
+        await psCommand({ goal: (goalParts as string[]).join(' '), symptom: o.symptom, done: o.done, scope: o.scope, lens: o.lens });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'ps');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 // â”€â”€ Dossier command group â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const dossierGroup = program
   .command('dossier')
