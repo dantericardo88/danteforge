@@ -5,7 +5,7 @@
 > Entries are never silently deleted: a challenge is open, solved (with the commit), or
 > retired (with the reason). An empty OPEN section is a smell, not an achievement.
 
-## Open (24)
+## Open (33)
 
 ### CH-006: Cycle economics: tiny payload per hour
 - **Problem:** A push attempt costs ~60min of orchestration + LLM for 2-3 file diffs; overhead dominates real building.
@@ -151,7 +151,61 @@
 - **Opportunity:** Report resolved/GRADEABLE (exclude grader-no-target), but ONLY when the GOLD patch also yields the same no-target (a dataset property) — never solver-induced collection breakage (that would game the rate). Honest denominator = the rungs the solver can actually be graded on.
 - Opened: 2026-06-21
 
-## Resolved (36)
+### CH-061: Autonomous court-9 blocked: only 1 reliable judge-only model is live
+- **Problem:** The frontier-review court structurally requires >=2 independent judge-only models (grok-build + gemini-cli). Build-eligible members (codex, claude-code) are excluded by design (court-audit #4+#5), so they can never fill the gap. grok is reliable but the SECOND judge is environmentally dead, so the court seats at most ONE functional judge -> INSUFFICIENT -> no autonomous court-validated 9 is possible regardless of how frontier the dim is.
+- **Evidence:** gemini -p => 'IneligibleTierError: client no longer supported for Gemini Code Assist for individuals' (Google deprecated the standalone CLI). agy --print (the documented replacement, per gemini-cli-adapter.ts:3-11) HANGS: exit 124, 0 bytes, even with --dangerously-skip-permissions (it needs an interactive Google login). frontier-review documentation: both judges abstained UNCLEAR -> court honestly returned 'could not decide, re-attempt/escalate'.
+- **Opportunity:** A 2nd reliable judge unblocks EVERY autonomous court-9. Paths: (a) operator completes agy's interactive Google auth so agy --print responds (existing adapter then works); (b) register a different judge-only model CLI (the adapter only needs a binary that answers -p); (c) use the ratify path (human as the 2nd standing anchor) for the 11 ratify-assisted dims. This is the plan's standing/external-anchor irreducible, made concrete.
+- Opened: 2026-06-22
+
+### CH-063: Wire the continuous-evaluator loop — and make the court the evaluator (court-as-RULER), not a gameable checklist
+- **Problem:** The graded-evaluator keystone is built but is an ISLAND: runGradedEvaluator is imported only by evaluate.ts + tests; NO production loop consumes it. harden-crusade still measures via the BINARY capability_test (capabilityTestCommand), harden-crusade-runners.ts:81 hardcodes --exit-code-metric, and the L8 branch (harden-crusade.ts:295-352) skips the builder + returns AT_CEILING the moment the binary test exits 0 — the exact short-circuit the graded evaluator was meant to dissolve, still in the path. Two landmines: (1) autoresearch shouldKeep assumes LOWER-is-better, so combined_score (higher-is-better) would be MINIMIZED; (2) eval-mao.ts grades a static, builder-EDITABLE checklist (fs.existsSync of benchmark/doc files) — a builder can touch those files to raise the score without building anything ('the binary capability_test with more decimals', Claude). No archive (pure greedy → local optima), and the combined_score→tier→OutcomeEvidenceEntry receipt plumbing is aspirational (no code maps it).
+- **Evidence:** Council adversarial review 2026-06-22 (Grok+Codex+Claude unanimous). Grok: wave-ledger shows multi_agent_orchestration capabilityTestExit:0, depth-pass only, decision:stall. Claude: a builder can touch the eval-mao gap files to raise 0.571→~0.86 with zero capability. All 3: the keystone isn't load-bearing until wired; 1 of ~50 dims has a graded_evaluator.
+- **Opportunity:** Claude's key find: DanteForge ALREADY HAS the RULER primitive — the peer-review COURT we hardened this session. Connecting the court as the build-loop's relative evaluator (rank N candidate builds relative to each other + the competitor bar) solves RULER AND the hold-out gaming SIMULTANEOUSLY, and is 'a MORE promising route than hardening the checklist'. The hardened GRADER becomes the build-SIGNAL — one bar, end to end (OpenEvolve/AIDE pattern). Ordered: (1) fix the maximize direction; (2) wire harden-crusade to climb a graded score for graded dims (3 edits: measure via graded_evaluator, drop --exit-code-metric, replace the L8 AT_CEILING short-circuit with shouldClimb) + a regression test (binary passes + graded 0.571 → builder STILL dispatched); (3) replace eval-mao's editable checklist with the court-as-RULER (or contamination-resistant hold-out inputs); (4) DGM-style archive; (5) score→receipt plumbing.
+- Opened: 2026-06-23
+
+### CH-064: Demand provenance not enforced in the canonical >8.0 read path
+- **Problem:** checkHarvestProvenance (signed + verified_live + demand-before-build) is env-gated (DANTEFORGE_GROUNDING_GATE, default-off) and only runs in checkFrontierSpec when signals are passed; applyFrontierGate/deriveDimScoreGated can treat a harvest-demand: tag as demand-grounded for a >8.0 score WITHOUT structurally proving the demand. So 8.5-9.0 'demand-validated' is label-deep, not gate-enforced.
+- **Evidence:** Council (Grok+Codex) discipline audit 2026-06-23: frontier-spec.ts:495 is the only checkHarvestProvenance call; frontier-spec.ts:390 FRONTIER_GATE_THRESHOLD=8.0; harvested-bar.ts:216 default-off. verifyDemandLive is test-only (never called from harvest-demand-cmd.ts or the push loop).
+- **Opportunity:** Fold checkHarvestProvenance + verifyDemandLive + demandClusterPredatesArtifact into the canonical gated derivation, fail-closed for any >8.0 score with harvest provenance — making 8.5-9.0 structurally demand-validated, the true autonomous engineering frontier.
+- Opened: 2026-06-23
+
+### CH-065: Mirror-vs-canonical score drift is a CLASS, not one bug
+- **Problem:** Any non-TS or hand-rolled path that writes scores.derived WITHOUT the full deriveDimScoreGated gate chain (frontier + grounding + provenance + market cap) can publish scores that disagree with the canonical read path. evidence-rescore.mjs is one instance (it just shipped community_adoption=9.0); Grok flagged validate.ts persisting without checkHarvestProvenance, compete-matrix.ts applyOutcomeDerivedScores re-implementing deriveDimScoreGated inline, and decisionDimScore falling back to raw self for no-outcomes dims.
+- **Evidence:** Council discipline audit 2026-06-23 (Grok full verdict): evidence-rescore.mjs market-cap skip on weight-0 dims (FIXED); validate.ts ~L240 applies applyFrontierGate but not checkHarvestProvenance before persisting; compete-matrix.ts applyOutcomeDerivedScores pinned by test but can drift on gate additions.
+- **Opportunity:** Retire every mirror/hand-rolled score writer for ONE canonical path: crusade/validate call deriveDimScoreGated + matrix write (or a thin 'danteforge rescore' CLI), then delete evidence-rescore.mjs. Kills the whole drift class at once — no writer can publish an ungated score.
+- Opened: 2026-06-23
+
+### CH-066: No-outcomes dims read raw self on the decision path (decisionDimScore)
+- **Problem:** decisionDimScore (crusade/sprint/harden selection + computeOverallScore) returns raw scores.self for a dim with NO declared outcomes (compete-matrix-score.ts:98) — LEGACY_NO_RECEIPT_CEILING (7.0) only runs on the derived path. A no-outcomes dim with self=8.5 reads 8.5 to the loop. The 7.0+market cap fix is correct but touches a HOT PATH: it shifts ~3 non-smoke test fixtures (dim-band, council-crusade, harden-crusade — all fixable by giving fixtures a derived score) and raises a design question — should compete --auto persist a post-sprint score raw or capped? Needs FULL-SUITE verification (not just smoke), which stalls locally.
+- **Evidence:** Council fix-all audit 2026-06-23 (unanimous): the hole confirmed verbatim. I applied the cap, fixed 3 fixtures green, but reverted on a MISDIAGNOSIS (attributed 2 pre-existing compete-check-all-nine failures to it — they persist after revert, so they are NOT from this fix).
+- **Opportunity:** Re-apply min(self, LEGACY_NO_RECEIPT_CEILING)+market cap in decisionDimScore, update the 3 fixtures to carry derived, run the BROAD matrix/score/loop suite (not just smoke) to verify, and separately diagnose the pre-existing compete-check-all-nine failures + the test-pollution (tests writing to docs/reports/enterprise-readiness.ts).
+- Opened: 2026-06-23
+
+### CH-067: Full suite is not green — smoke subset hides pre-existing non-smoke failures
+- **Problem:** test:smoke (839) is green but the broad non-smoke suite has ~12 failing files, including 0-pass CLI-registration tests (score-command-alias, matrix-command-registration) that are DEFINITIVELY unrelated to scoring. So 'smoke green' overstates health AND no hot-path scoring change (e.g. the decisionDimScore no-outcomes cap, CH-066) can be cleanly verified — its breaks are indistinguishable from the pre-existing breakage. This is why CH-066 was reverted twice: unverifiable against a broken baseline.
+- **Evidence:** Broad verify 2026-06-23 over ~30 affected test files: 12 failing (score-command-alias 0/1 + matrix-command-registration 0/1 = registration, not scoring; compete 34/6, compete-matrix 34/3, derived-score-decay 6/3, harsh-scorer 50/1, matrix-development-engine 3/1, council-frontier-loop flaky-timeout).
+- **Opportunity:** Triage the pre-existing non-smoke failures to a GREEN baseline (or an explicit known-failures allowlist) + add the broad suite to CI, THEN land hot-path changes (CH-066) with a clean before/after delta. This is the prerequisite for safely building any scoring-path change.
+- Opened: 2026-06-24
+
+### CH-068: compete --auto persists overall displayScore, not dim-specific displayDimensions[dimKey]
+- **Problem:** compete --auto's post-sprint update writes the OVERALL displayScore (7.0) to a dim instead of the dim-specific displayDimensions value (autonomy=8.5). The compete-check-all-nine 'Bug A' guard is FAILING — the bug is live.
+- **Evidence:** compete-check-all-nine.test.ts:231 (isolated tmpDir, not pollution): asserts scores.self===8.5, gets 7.0; persists after reverting Fix 3 → pre-existing, unrelated to scoring-cap work.
+- **Opportunity:** Fix the dimension-update in the proposal/merge flow (compete.ts / matrix-development-engine.ts) to read displayDimensions[dimKey], restoring the guard to green.
+- Opened: 2026-06-24
+
+### CH-069: Build has no post-build chunk-integrity gate
+- **Problem:** tsup code-splits each command into a lazily-import()-ed dist chunk. A truncated/corrupt chunk (e.g. crash mid-write) passes typecheck AND the 839-test smoke and only throws SyntaxError when its command is first invoked at runtime — silent until hit.
+- **Evidence:** This session: 'danteforge council --ask' threw SyntaxError: Invalid or unexpected token from compileSourceTextModule (caught as 'Error in council') until a clean npm run build regenerated the truncated chunk. Reproduced 3x; --verbose stack traced it to ESM module compilation.
+- **Opportunity:** A post-build smoke that dynamically import()s every dist chunk (or every command entry) catches truncation/corruption deterministically at build time instead of in front of the user.
+- Opened: 2026-06-24
+
+### CH-070: compete-check-all-nine Bug A/B tests assert pre-clamp scores
+- **Problem:** The 2 failing compete --auto tests (Bug A dimension-routing, Bug B victory-threshold) assert scores['self']===8.5 and ===8.0, but the de-inflation kernel correctly clamps any >7.0 write without a validate receipt to 7.0. Code (compete-reports.ts:276 displayDimensions[dimKey]??displayScore) and clamp are BOTH correct — the test literals predate the clamp. The clamp also collapses Bug A's two branches to 7.0, destroying the test's ability to distinguish dimension-specific routing.
+- **Evidence:** tests/compete-check-all-nine.test.ts: Bug A expected 8.5 actual 7, Bug B expected 8.0 actual 7. These are the only non-smoke scoring failures in the suspect set (score-command-alias/matrix-registration/derived-score-decay/harsh-scorer*/frontier-crusade/matrix-development-engine all PASS).
+- **Opportunity:** Honest fix (NOT lowering assertions): give each fixture a passing validate receipt so 8.5/8.0 are legitimately allowed (tests routing/victory at the high end AND respects the clamp), or test intent with sub-ceiling numbers. Greens the last scoring gap toward CH-067.
+- Opened: 2026-06-24
+
+## Resolved (37)
 
 - **CH-001: Blind retry - dissent never reached the builder** — solved 2026-06-12: solved: court-feedback.ts + composeBuildGoal (commit feat(court): verdict->builder feedback)
 - **CH-002: Bar-goal disconnect** — solved 2026-06-12: solved: the frozen ladder bar is now in every push build goal (same commit)
@@ -189,3 +243,4 @@
 - **CH-054: [grader-env-mismatch → solve-budget-after-oracle] The 15-min spawnSync timeout cut attempt 2 short (exit null); give a l** — solved 2026-06-21: 7af995f+CH-063: solve budget addressed — opus + --effort high + --solve-timeout-ms 1200000 (20min) so a genuine revision is not cut short
 - **CH-055: [grader-env-mismatch → expected-behavior-feedback] Feed the EXPECTED behavior of the broken tests (valid input still pas** — retired 2026-06-21: duplicate of CH-053 (the env-mismatch decomposition was recorded twice)
 - **CH-056: [grader-env-mismatch → solve-budget-after-oracle] A solve timeout that cuts a genuine revision short (exit null) needs a** — retired 2026-06-21: duplicate of CH-054 (recorded twice)
+- **CH-062: Pre-launch integrity gaps on the 9.0 write path (CIP + capability_test not enforced)** — solved 2026-06-22: CIP gate shipped (frontier-review CIP-before-validated) + the council-verify residuals: stale-ledger scoping, CIP-downgrade parse, partial-seating INSUFFICIENT. Commits this session.

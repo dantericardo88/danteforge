@@ -244,12 +244,14 @@ describe('compete --auto Bug A: dimension-specific post-sprint score', () => {
           return JSON.parse(raw);
         },
         _runInferno: async () => { /* no-op */ },
-        // Post-sprint scorer: overall=7.0 but autonomy-specific=8.5
+        // Post-sprint scorer: overall≈6.9 but autonomy-specific=6.5 (both kept sub-7.0 so the
+        // unreceipted >7.0 de-inflation clamp does NOT fire — otherwise it caps both branches to
+        // 7.0 and the routing assertion becomes untestable; see CH-070).
         _postSprintScore: async () => ({
           rawScore: 70,
           harshScore: 70,
-          displayScore: 7.0,
-          displayDimensions: { autonomy: 8.5, testing: 7.0 } as never,
+          displayScore: 6.9,
+          displayDimensions: { autonomy: 6.5, testing: 7.0 } as never,
           dimensions: {} as never,
           penalties: [],
           stubsDetected: [],
@@ -258,21 +260,24 @@ describe('compete --auto Bug A: dimension-specific post-sprint score', () => {
           maturityAssessment: {} as never,
           timestamp: new Date().toISOString(),
         }),
-        // Strict dims: autonomy=85 → displayDimensions.autonomy=8.5 after applyStrictOverrides.
-        // Other dims need non-NaN values so the weighted recompute of displayScore stays ≠ 8.5.
+        // Strict dims: autonomy=65 → displayDimensions.autonomy=6.5 after applyStrictOverrides.
+        // Other dims (70) keep the weighted recompute of displayScore ≈6.9 so it stays ≠ 6.5,
+        // and 6.5 is below the unreceipted 7.0 ceiling so clampDimScore leaves it intact.
         _computeStrictDims: async () => ({
-          autonomy: 85, selfImprovement: 70, tokenEconomy: 70,
+          autonomy: 65, selfImprovement: 70, tokenEconomy: 70,
           specDrivenPipeline: 70, developerExperience: 70, planningQuality: 70, convergenceSelfHealing: 70,
         }) as never,
       });
 
-      // With Bug A fix: dimension-specific displayDimensions.autonomy=8.5 is used (not displayScore).
-      // Without fix: displayScore (weighted avg, ≠ 8.5) would be used instead. Proposal flow
-      // writes the resulting score to matrix.json on disk via mergeScoreProposals.
+      // With Bug A fix: dimension-specific displayDimensions.autonomy=6.5 is used (not displayScore≈6.9).
+      // Without fix: displayScore (weighted avg ≈6.9, ≠ 6.5) would be used instead. Proposal flow
+      // writes the resulting score to matrix.json on disk via mergeScoreProposals. Values are kept
+      // below 7.0 deliberately: the de-inflation clamp caps any unreceipted >7.0 write to 7.0, which
+      // would collapse both branches to 7.0 and make this routing assertion untestable (CH-070).
       const finalRaw = await fs.readFile(path.join(tmpDir, '.danteforge', 'compete', 'matrix.json'), 'utf8');
       const final = JSON.parse(finalRaw) as { dimensions: Array<{ id: string; scores: Record<string, number> }> };
       const autonomyDim = final.dimensions.find(d => d.id === 'autonomy');
-      assert.equal(autonomyDim?.scores['self'], 8.5, 'Should use dimension-specific score 8.5, not overall displayScore');
+      assert.equal(autonomyDim?.scores['self'], 6.5, 'Should use dimension-specific score 6.5, not overall displayScore ≈6.9');
     } finally {
       await fs.rm(tmpDir, { recursive: true, force: true });
     }
