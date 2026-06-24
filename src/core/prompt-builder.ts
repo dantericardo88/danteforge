@@ -4,6 +4,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { logger } from './logger.js';
 import { FileError } from './errors.js';
+import { TASK_INVARIANTS } from './problem-solving-contract.js';
 
 const STATE_DIR = '.danteforge';
 const PROMPTS_DIR = path.join(STATE_DIR, 'prompts');
@@ -87,6 +88,7 @@ ${verify ? `Verification criteria: ${verify}` : ''}
 ${safeConstitution ? `\nProject principles:\n${safeConstitution}` : ''}
 
 Requirements:
+${TASK_INVARIANTS}
 - Write clean, production-ready code
 - Follow existing patterns in the codebase
 - Make atomic, focused changes

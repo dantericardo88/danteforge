@@ -45,6 +45,17 @@ export function wrapWithOperatingContract(prompt: string): string {
 }
 
 /**
+ * The behavioral invariants SAFE to inject into a CODE-OUTPUT prompt (one whose parser expects only
+ * NEW_FILE/SEARCH-REPLACE blocks). It deliberately omits the "lead with conclusion" + FINDINGS/CHANGE output
+ * contract — that would fight the code-block parser (Codex's caveat). Pure disposition: investigate + resolve.
+ */
+export const TASK_INVARIANTS = `- INVESTIGATE before you mutate: reconstruct what the target code ACTUALLY does before changing it; trace the real
+  root cause, never pattern-match to a likely-looking line.
+- RESOLVE, then proceed (bias to action): resolve ambiguity from the codebase + sensible defaults and proceed,
+  stating any assumption; do not stall on reversible under-specification, and preserve existing behavior unless the
+  task says otherwise.`;
+
+/**
  * The 7 role-lenses as DATA — an analysis FRAME, not a costume. A lens resolves into concrete actions/checks
  * (which is the whole lever: each line maps to something the model can DO), never decorative persona prose.
  */
