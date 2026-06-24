@@ -10,6 +10,10 @@ const base = (over: Partial<StallInputs> = {}): StallInputs => ({
   ...over,
 });
 
+// routeStallAction now also carries decomposed `children` for retry-decompose (a wall → worklist of sub-problems).
+// These assertions check the ACTION shape, not the dynamic child list — `ep` extracts the actionable fields.
+const ep = (r: { exec: string | null; plateau: boolean }) => ({ exec: r.exec, plateau: r.plateau });
+
 describe('resolveStall — Richard\'s DNA in the stall brain: env blocker is a problem, not a wall', () => {
   const envBlocked = () => diagnoseStall(base({ commands: [{ command: 'pdftotext in.pdf out.txt', exitCode: 127 }] }));
 
@@ -32,7 +36,7 @@ describe('resolveStall — Richard\'s DNA in the stall brain: env blocker is a p
     const wrongApproach = diagnoseStall(base({ filesChanged: 5 })); // clean build, score held → wrong-approach
     const r = await resolveStall(wrongApproach, '/x', { _solve: async () => { routed = true; return { solved: true }; } });
     assert.equal(routed, false, 'honesty/score stalls are not registry-auto-solvable by design');
-    assert.deepEqual({ exec: r.exec, plateau: r.plateau }, routeStallAction(wrongApproach));
+    assert.deepEqual({ exec: r.exec, plateau: r.plateau }, ep(routeStallAction(wrongApproach)));
   });
 });
 
@@ -120,8 +124,8 @@ describe('routeStallAction — diagnosis → bounded self-correcting action', ()
     assert.deepEqual(decoupled, { exec: 'ground-outcomes --apply', plateau: false });
   });
   it('wrong-approach / no-op → retry, no command, no plateau', () => {
-    assert.deepEqual(routeStallAction(diagnoseStall(base({ filesChanged: 4 }))), { exec: null, plateau: false });
-    assert.deepEqual(routeStallAction(diagnoseStall(base({ filesChanged: 0 }))), { exec: null, plateau: false });
+    assert.deepEqual(ep(routeStallAction(diagnoseStall(base({ filesChanged: 4 })))), { exec: null, plateau: false });
+    assert.deepEqual(ep(routeStallAction(diagnoseStall(base({ filesChanged: 0 })))), { exec: null, plateau: false });
   });
   it('unbuildable / budget-exhausted → PLATEAU (honest ceiling), no retry', () => {
     assert.deepEqual(routeStallAction(diagnoseStall(base({ commands: [{ command: 'x', exitCode: 127 }] }))), { exec: null, plateau: true });
@@ -153,7 +157,7 @@ describe('diagnoseStallFromProject — gathers live evidence (seamed)', () => {
       _integrityViolations: async () => [], _changedFiles: async () => 0,
     });
     assert.equal(d.category, 'build-failed');
-    assert.deepEqual(routeStallAction(d), { exec: null, plateau: false }); // retry-decompose, don't burn budget on the wrong fix
+    assert.deepEqual(ep(routeStallAction(d)), { exec: null, plateau: false }); // retry-decompose, don't burn budget on the wrong fix
   });
 
   it('budget exhausted → honest ceiling regardless of evidence', async () => {

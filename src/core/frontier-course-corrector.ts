@@ -191,6 +191,8 @@ export interface StallActionResult {
   exec: string | null;
   /** true = stop this dim (honest ceiling / unbuildable); false = retry next cycle. */
   plateau: boolean;
+  /** For retry-decompose: the >=2 DEFINED child sub-problems the stall fans into (recorded by resolveStall). */
+  children?: import('./obstacle-decomposition.js').ChildObstacle[];
 }
 
 export function routeStallAction(d: StallDiagnosis): StallActionResult {
@@ -199,10 +201,47 @@ export function routeStallAction(d: StallDiagnosis): StallActionResult {
     case 'fix-outcome':
       return { exec: 'ground-outcomes --apply', plateau: false }; // grounding fixes the honesty stall → retry
     case 'retry-decompose':
-      return { exec: null, plateau: false };                       // retry a different approach (budget-bounded)
+      // No longer a slogan: a "retry differently" wall fans into >=2 tracked, DEFINED sub-problems.
+      return { exec: null, plateau: false, children: decomposeStall(d) };
     case 'mark-unbuildable':
     case 'honest-ceiling':
       return { exec: null, plateau: true };                        // nothing more will help — stop honestly
+  }
+}
+
+/**
+ * Make `retry-decompose` REAL (the operator's core ask: decompose large problems into many small ones, in the
+ * autonomy loop). Turns a stall into >=2 DEFINED child sub-problems — a wall becomes a worklist, never a blind
+ * retry. Pure; resolveStall records the children to the ledger via the canonical solveOrDecompose engine. The
+ * children are category-specific so they are genuine angles (the "decomposition-as-noise" guard), not filler.
+ */
+export function decomposeStall(d: StallDiagnosis): import('./obstacle-decomposition.js').ChildObstacle[] {
+  const ev = d.evidence.map(e => e.detail).join('; ').slice(0, 180);
+  const isolate = {
+    kind: 'stall-isolate',
+    signal: `Find the SMALLEST reversible step that moves ${d.dimId} past the ${d.category} stall: ${d.rationale}`.slice(0, 200),
+    rationale: `A blind retry repeats the wall; the smallest reversible step makes the next attempt evidence-bearing. Evidence: ${ev}`,
+  };
+  switch (d.category) {
+    case 'build-failed':
+    case 'no-op-build':
+      return [isolate, {
+        kind: 'stall-rootcause',
+        signal: `Reproduce the first failing build step for ${d.dimId} in isolation and name its TRUE root cause (not the likely-looking line).`,
+        rationale: `build stalls burn cycles until the real cause is named, not pattern-matched. Evidence: ${ev}`,
+      }];
+    case 'wrong-approach':
+      return [isolate, {
+        kind: 'stall-assumption',
+        signal: `Name the specific assumption in the current ${d.dimId} approach that the failing gate disproves, and a different approach that avoids it.`,
+        rationale: `wrong-approach means the STRATEGY is wrong, not the execution — a new angle is required, not a retry. Evidence: ${ev}`,
+      }];
+    default:
+      return [isolate, {
+        kind: 'stall-altpath',
+        signal: `Propose one genuinely DIFFERENT approach for ${d.dimId} than the last attempt (not a tweak of the same change).`,
+        rationale: `retry-decompose requires a different path, not a repeat of the wall. Evidence: ${ev}`,
+      }];
   }
 }
 
@@ -226,9 +265,35 @@ function extractFailedCommand(d: StallDiagnosis): string | undefined {
  */
 export async function resolveStall(
   d: StallDiagnosis, cwd: string,
-  opts: { failedCommand?: string; _solve?: (o: import('./obstacle-registry.js').Obstacle) => Promise<{ solved: boolean; ceiling?: string }> } = {},
+  opts: {
+    failedCommand?: string;
+    /** Default true: record retry-decompose children to the ledger. Set false (or omit cwd) for dry runs/tests. */
+    record?: boolean;
+    _solve?: (o: import('./obstacle-registry.js').Obstacle) => Promise<{ solved: boolean; ceiling?: string }>;
+    _recordStall?: (receipt: import('./obstacle-decomposition.js').DecompositionReceipt, cwd: string) => Promise<string[]>;
+  } = {},
 ): Promise<StallActionResult & { solvedByRegistry?: boolean; solveDetail?: string }> {
   const base = routeStallAction(d);
+  // retry-decompose is no longer a slogan: fan the stall into >=2 ledger sub-problems (the no-walls contract at the
+  // loop's stall point — the operator's "decompose large into small, in the loop" ask). Reuses the canonical
+  // solveOrDecompose engine: force-unsolved -> decompose -> record with title dedup, so a per-instance loop calling
+  // this every cycle records each child ONCE, never spam.
+  if (base.children?.length && cwd && opts.record !== false) {
+    try {
+      const obstacle: import('./obstacle-registry.js').Obstacle = {
+        kind: `stall-${d.category}`,
+        signal: d.rationale || d.evidence.map(e => e.detail).join('; ') || d.dimId,
+        context: { dimId: d.dimId },
+      };
+      const { solveOrDecompose } = await import('./obstacle-solve-or-decompose.js');
+      await solveOrDecompose(obstacle, {
+        cwd,
+        _solve: async () => ({ solved: false, obstacle, attempted: [], ceiling: 'a stall is not registry-auto-solvable — decompose into sub-problems' }),
+        proposeChildren: () => base.children!,
+        _record: opts._recordStall,
+      });
+    } catch { /* a stall-decomposition ledger write must NEVER break the loop's own course-correction */ }
+  }
   if (d.category !== 'unbuildable') return base; // only env/operational blockers route to the registry
   const command = opts.failedCommand ?? extractFailedCommand(d);
   const obstacle: import('./obstacle-registry.js').Obstacle = {
