@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { REPO_PIPELINE_TEXT } from './workflow-surface.js';
+import { syncClaudeCommands } from './assistant-claude-commands.js';
 import {
   buildCursorBootstrapRule,
   buildCursorBootstrapRuleV2,
@@ -624,11 +625,15 @@ async function installNativeSkills(
     await syncCodexBootstrap(homeDir);
   }
 
-  if (assistant === 'claude' && projectDir) {
-    try {
-      await syncClaudePluginCache(homeDir, projectDir);
-    } catch {
-      // Plugin cache sync is best-effort — don't block skill installation
+  if (assistant === 'claude') {
+    // Surface every commands/*.md as a real Claude Code slash command (+ /askcouncil, /supervise aliases).
+    await syncClaudeCommands(homeDir, resolvePackagedCommandsDir());
+    if (projectDir) {
+      try {
+        await syncClaudePluginCache(homeDir, projectDir);
+      } catch {
+        // Plugin cache sync is best-effort — don't block skill installation
+      }
     }
   }
 }

@@ -29,17 +29,19 @@ export interface SuperviseOptions {
   stop?: boolean;
   installKeepalive?: boolean;
   dryRun?: boolean;
+  bestOfN?: number;
 }
 
 const ENGINES = new Set(['autoforge', 'crusade', 'frontier']);
 
-/** Map an engine name + target to the CLI argv that runs its inner autonomous loop once. */
-export function engineArgs(engine: string, target: number): string[] {
+/** Map an engine name + target (+ optional best-of-N) to the CLI argv that runs its inner loop once. */
+export function engineArgs(engine: string, target: number, bestOfN?: number): string[] {
+  const bo = bestOfN && bestOfN > 1 ? ['--best-of-n', String(bestOfN)] : [];
   switch (engine) {
-    case 'crusade': return ['crusade', '--target', String(target)];
-    case 'frontier': return ['ascend', '--frontier', '--target', String(target)];
+    case 'crusade': return ['crusade', '--target', String(target), ...bo];
+    case 'frontier': return ['ascend', '--frontier', '--target', String(target), ...bo];
     case 'autoforge':
-    default: return ['autoforge', '--auto', '--target', String(target)];
+    default: return ['autoforge', '--auto', '--target', String(target), ...bo];
   }
 }
 
@@ -102,7 +104,7 @@ export async function supervise(goalArg: string | undefined, options: SuperviseO
   const posture: Posture = options.posture ?? 'tiered';
   if (!ENGINES.has(engine)) { logger.error(`[supervise] unknown engine "${engine}". Use: autoforge | crusade | frontier`); process.exitCode = 1; return; }
 
-  const argv = engineArgs(engine, target);
+  const argv = engineArgs(engine, target, options.bestOfN);
   if (options.dryRun) {
     logger.info(`[supervise] DRY RUN — would loop: ${engine} → \`danteforge ${argv.join(' ')}\` (posture=${posture}, target=${target})`);
     logger.info('[supervise] would auto-restart transient stops; pause only on ceiling/policy/budget.');

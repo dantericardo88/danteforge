@@ -51,6 +51,7 @@ program
   .option('--confirm', 'Pause for human approval before executing (policy gate)')
   .option('--no-predictor', 'Disable Article XV forward prediction layer (saves ~$0.03/wave, loses causal coherence signal)')
   .option('--target <score>', 'Loop until displayScore >= target (default: 9.0 when --auto)')
+  .option('--best-of-n <n>', 'Forge cycles generate N candidates and apply the pre-filter-selected best (default 1)')
   .option('--dimension <name>', 'Focus improvement on one scoring dimension')
   .option('--resume', 'Resume from .danteforge/checkpoint.json')
   .option('--adversarial', 'Enable adversarial score gate between cycles')
@@ -74,6 +75,7 @@ program
       confirm: opts.confirm,
       noPredictor: opts.predictor === false,
       target: opts.target !== undefined ? parseFloat(opts.target as string) : undefined,
+      bestOfN: opts.bestOfN !== undefined ? parseInt(opts.bestOfN as string, 10) : undefined,
       dimension: opts.dimension as string | undefined,
       resume: opts.resume as boolean | undefined,
       adversarial: opts.adversarial as boolean | undefined,

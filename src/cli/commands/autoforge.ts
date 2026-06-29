@@ -77,6 +77,7 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
   dryRun?: boolean;
   pauseAt?: number;
   skipCIP?: boolean;
+  bestOfN?: number;
   _computeRetroScore?: boolean;
   _runLoop?: (ctx: AutoforgeLoopContext, deps?: { _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }> }) => Promise<AutoforgeLoopContext>;
   _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }>;
@@ -134,6 +135,7 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
     isWebProject,
     force: options.force ?? false,
     dryRun: options.dryRun,
+    bestOfN: options.bestOfN,
     maxRetries: 10,
     recentScores: [],
     ...(options.pauseAt !== undefined ? { pauseAtScore: options.pauseAt } : {}),
@@ -260,6 +262,8 @@ export async function autoforge(goal?: string, options: {
   resume?: boolean;
   /** Enable adversarial score gate between cycles (from ascend) */
   adversarial?: boolean;
+  /** Best-of-N forge: generate N candidates per task and apply the pre-filter-selected best. Default 1. */
+  bestOfN?: number;
   // Injection seams for testing
   _runLoop?: (ctx: AutoforgeLoopContext, deps?: { _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }> }) => Promise<AutoforgeLoopContext>;
   _executeCommand?: (command: string, cwd: string) => Promise<{ success: boolean }>;

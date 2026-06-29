@@ -661,7 +661,13 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext, deps?: Partial
 
       if (await checkProtectedPathGate(ctx, loopDeps, nextCommand, cwd)) break;
 
-      const execRes = await executeCycleCommand(ctx, loopDeps, nextCommand, cwd, currentBlockedCount, prevBlockedCount, consecutiveExecFailures);
+      // Best-of-N passthrough: when the loop is forging and a best-of-N budget is set, run the executor in
+      // best-of-N mode. Appended AFTER the protected-path gate so that gate still matches the bare 'forge'.
+      let cmdToRun = nextCommand;
+      if ((ctx.bestOfN ?? 1) > 1 && (nextCommand === 'forge' || nextCommand.startsWith('forge '))) {
+        cmdToRun = `forge --best-of-n ${ctx.bestOfN}`;
+      }
+      const execRes = await executeCycleCommand(ctx, loopDeps, cmdToRun, cwd, currentBlockedCount, prevBlockedCount, consecutiveExecFailures);
       consecutiveExecFailures = execRes.consecutiveExecFailures;
       prevBlockedCount = execRes.prevBlockedCount;
       if (execRes.shouldResetConsecutiveFailures) consecutiveFailures = 0;

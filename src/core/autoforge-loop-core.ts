@@ -46,6 +46,9 @@ export interface AutoforgeLoopContext {
   previousVerdicts?: CompletionVerdict[];
   /** ISO timestamp of last score improvement — used for time-limit termination. */
   lastProgressTime?: string;
+  /** Best-of-N budget for forge cycles: generate N candidates and apply the pre-filter-selected best.
+   *  Default undefined/1 = single-candidate (no extra LLM cost). */
+  bestOfN?: number;
 }
 
 export interface AutoforgeGuidance {

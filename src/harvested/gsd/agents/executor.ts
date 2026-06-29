@@ -125,6 +125,12 @@ export interface ExecuteWaveOptions {
   /** Depth Doctrine: wave type override. When 'depth', executeWave runs
    *  `danteforge validate --all` instead of forge tasks. */
   waveType?: 'breadth' | 'depth';
+  /** Best-of-N: generate this many candidate LLM results per task and apply the one the Layer-1 pre-filter
+   *  selects (trust-boundary / file-size / no-stub clean, most real ops). Default 1 = single-candidate
+   *  (today's behavior, no extra LLM calls). >1 trades cost for a cleaner applied candidate. */
+  bestOfN?: number;
+  /** Inject the best-of-N selector for testing — defaults to selectBestForgeCandidate. */
+  _selectForge?: (results: string[]) => Promise<{ chosen: { result: string } | null }>;
 }
 
 // ── Code Application Pipeline ─────────────────────────────────────────────────
@@ -253,11 +259,36 @@ async function executeForgeTask(task: WaveTask, index: number, totalTasks: numbe
       taskPrompt = await injectRelevantLessons(taskPrompt, 3, cwd ?? process.cwd());
     } catch { /* best-effort — never block forge */ }
     const onChunk = options?._onChunk;
-    const result = options?._llmCaller
-      ? await options._llmCaller(taskPrompt)
+    const generateOne = (): Promise<string> => options?._llmCaller
+      ? options._llmCaller(taskPrompt)
       : onChunk
-        ? await callLLMWithProgress(taskPrompt, onChunk, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage })
-        : await callLLM(taskPrompt, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage });
+        ? callLLMWithProgress(taskPrompt, onChunk, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage })
+        : callLLM(taskPrompt, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage });
+
+    // Best-of-N: generate N candidates and apply the one the Layer-1 pre-filter selects. N=1 (default) is a
+    // single generation — today's behavior exactly, no extra LLM calls.
+    const n = Math.max(1, options?.bestOfN ?? 1);
+    let result: string;
+    if (n === 1) {
+      result = await generateOne();
+    } else {
+      const candidates: string[] = [];
+      for (let c = 0; c < n; c++) candidates.push(await generateOne());
+      if (options?._selectForge) {
+        const selection = await options._selectForge(candidates);
+        result = selection.chosen?.result ?? candidates[0]!;
+      } else {
+        const { selectBestForgeCandidate } = await import('../../../core/best-of-n-forge.js');
+        const selection = await selectBestForgeCandidate(candidates);
+        result = selection.chosen?.result ?? candidates[0]!;
+        // Ornith feedback (best-effort): fold the measured selection reward into the per-profile scaffold.
+        try {
+          const { recordForgeScaffoldReward } = await import('../../../core/scaffold-feedback.js');
+          await recordForgeScaffoldReward(profile, selection, cwd ?? process.cwd());
+        } catch (fbErr) { logger.verbose(`[best-effort] scaffold feedback: ${fbErr instanceof Error ? fbErr.message : String(fbErr)}`); }
+      }
+      logger.info(`[forge] best-of-${n}: applied the pre-filter-selected candidate for "${task.name}"`);
+    }
     logger.success(`LLM result for "${task.name}" (${result.length} chars)`);
     await applyCodePipeline(result, task.name, taskPrompt, cwd ?? process.cwd(), options, internalOnUsage, cwd);
     for (const file of task.files ?? []) recordFileModified(telemetry, file);

@@ -36,7 +36,7 @@ async function checkLLMPreflight(
 export async function forge(phase = '1', options: {
   profile?: string; parallel?: boolean; prompt?: boolean; light?: boolean;
   worktree?: boolean; figma?: boolean; skipUx?: boolean; confirm?: boolean;
-  dryRun?: boolean;
+  dryRun?: boolean; bestOfN?: number;
   _isLLMAvailable?: () => Promise<boolean>;
   _policyGate?: typeof runPolicyGate;
   /** Injection seam: replaces createTimeMachineCommit for testing */
@@ -132,7 +132,7 @@ export async function forge(phase = '1', options: {
   const onChunk = process.stdout.isTTY ? (chunk: string) => { process.stdout.write(chunk); } : undefined;
   const result = await withProgress(`Forging phase ${phase} [${profile}]`, async (handle) => {
     handle.update('running wave executor...');
-    return executeWave(parseInt(phase, 10), profile, options.parallel, options.prompt, options.worktree, undefined, { _onChunk: onChunk });
+    return executeWave(parseInt(phase, 10), profile, options.parallel, options.prompt, options.worktree, undefined, { _onChunk: onChunk, bestOfN: options.bestOfN });
   });
   if (!result.success) {
     process.exitCode = 1;

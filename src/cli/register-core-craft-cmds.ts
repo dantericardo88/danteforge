@@ -184,6 +184,7 @@ program
   .option('--skip-ux', 'Skip UX refinement even with --figma')
   .option('--confirm', 'Require explicit human approval via policy gate before executing')
   .option('--dry-run', 'Preview what would be executed without making any changes')
+  .option('--best-of-n <n>', 'Generate N candidate diffs per task and apply the pre-filter-selected best (default 1)')
   .addHelpText('after', `
 Examples:
   danteforge forge                  Execute wave 1 with balanced profile
@@ -210,6 +211,7 @@ Examples:
         skipUx: opts['skipUx'] as boolean | undefined,
         confirm: opts['confirm'] as boolean | undefined,
         dryRun: opts['dryRun'] as boolean | undefined,
+        bestOfN: opts['bestOfN'] !== undefined ? parseInt(opts['bestOfN'] as string, 10) : undefined,
       });
     })();
   });

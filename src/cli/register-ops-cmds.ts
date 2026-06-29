@@ -9,6 +9,7 @@ program
   .option('--engine <name>', 'Inner loop engine: autoforge | crusade | frontier', 'autoforge')
   .option('--target <score>', 'Loop until the engine reaches this score target', '8')
   .option('--posture <mode>', 'tiered (restart transient, pause on ceiling) | afk | notify', 'tiered')
+  .option('--best-of-n <n>', 'Forge cycles generate N candidates and apply the pre-filter-selected best (default 1)')
   .option('--max-restarts <n>', 'Hard cap on total relaunches (convergence backstop)', '100')
   .option('--status', 'Print the current campaign state and exit')
   .option('--stop', 'Signal a running supervisor to halt cleanly on its next turn')
@@ -21,6 +22,7 @@ program
           engine: opts.engine as string | undefined,
           target: opts.target !== undefined ? parseFloat(opts.target as string) : undefined,
           posture: opts.posture as ('tiered' | 'afk' | 'notify' | undefined),
+          bestOfN: opts.bestOfN !== undefined ? parseInt(opts.bestOfN as string, 10) : undefined,
           maxRestarts: opts.maxRestarts !== undefined ? parseInt(opts.maxRestarts as string, 10) : undefined,
           status: opts.status as boolean | undefined,
           stop: opts.stop as boolean | undefined,
