@@ -22,7 +22,7 @@ import { withErrorBoundary } from '../../core/cli-error-boundary.js';
 
 export type ReadFileFn = (p: string, enc: BufferEncoding) => Promise<string>;
 export type UnlinkFn = (p: string) => Promise<void>;
-export type RunLoopFn = (ctx: AutoforgeLoopContext) => Promise<AutoforgeLoopContext>;
+export type RunLoopFn = (ctx: AutoforgeLoopContext, deps?: Parameters<typeof runAutoforgeLoop>[1]) => Promise<AutoforgeLoopContext>;
 export type RunAscendFn = (opts: AscendEngineOptions) => Promise<AscendResult>;
 
 export interface ResumeOptions {
@@ -108,6 +108,11 @@ export async function resumeAutoforge(opts: ResumeOptions = {}): Promise<void> {
     };
 
     logger.info('[Resume] Restarting convergence loop...');
-    await runLoop(ctx);
+    // The MEASURED completion firewall must survive a resume — resume is the exact path the supervisor uses to
+    // recover from transient stops, so dropping deps here would let a resumed loop self-certify done from a soft
+    // score. Wire the same gate autoforge.ts uses.
+    const { executeAutoforgeCommand } = await import('../../core/autoforge-executor.js');
+    const { measuredReceiptGate } = await import('../../core/measured-completion-gate.js');
+    await runLoop(ctx, { _executeCommand: executeAutoforgeCommand, _measuredGate: (c: string) => measuredReceiptGate(c) });
   });
 }

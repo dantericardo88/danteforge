@@ -17,6 +17,7 @@ import { mapDimIdToScoringDimension } from './ascend-reporting.js';
 // applyStrictOverrides is a HOISTED function in ascend-engine.ts (safe to import back despite the
 // import cycle — function declarations exist before module-init completes; it's called at runtime).
 import { applyStrictOverrides, type AscendEngineOptions, type AscendCycleState } from './ascend-engine.js';
+import { measuredReceiptGate } from './measured-completion-gate.js';
 
 export async function executeDimensionCycle(
   options: AscendEngineOptions, loopCtx: AutoforgeLoopContext, nextDim: MatrixDimension,
@@ -50,11 +51,13 @@ export async function executeDimensionCycle(
       return { buildFailed: !r.success };
     } catch (err: unknown) {
       logger.warn(`[Ascend] Forge failed for ${nextDim.label}: ${String(err)} — falling back to advisory`);
-      await runLoopFn(loopCtx, {}).catch((e: unknown) => logger.warn(`[Ascend] Loop error: ${String(e)}`));
+      await runLoopFn(loopCtx, { _measuredGate: (c: string) => measuredReceiptGate(c) }).catch((e: unknown) => logger.warn(`[Ascend] Loop error: ${String(e)}`));
       return { buildFailed: true };
     }
   } else {
-    await runLoopFn(loopCtx, options._executeCommand ? { _executeCommand: wrappedExec } : {}).catch((err: unknown) => logger.warn(`[Ascend] Loop error for ${nextDim.label}: ${String(err)}`));
+    // Measured firewall must apply on the ascend hot path too — a resumed/ascend loop may not self-certify.
+    const ascendLoopDeps = { _measuredGate: (c: string) => measuredReceiptGate(c), ...(options._executeCommand ? { _executeCommand: wrappedExec } : {}) };
+    await runLoopFn(loopCtx, ascendLoopDeps).catch((err: unknown) => logger.warn(`[Ascend] Loop error for ${nextDim.label}: ${String(err)}`));
     return { buildFailed: false };
   }
 }
