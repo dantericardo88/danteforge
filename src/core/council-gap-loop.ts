@@ -60,6 +60,10 @@ export async function runCouncilGapLoop(
   const recordGap = deps.recordGap ?? ((g: CouncilGap) => defaultRecordGap(cwd, g));
   const recordedGapIds: string[] = [];
   let finalVerdict: CouncilGapVerdict = { verdict: 'NOT_READY', gaps: [], blockingGaps: [], perLens: [] };
+  const gapKey = (v: CouncilGapVerdict) => v.blockingGaps.map((g) => `${g.title}::${g.problem}`.toLowerCase()).sort().join('|');
+  let prevKey = '';
+  let stall = 0;
+  const MAX_STALL = 2; // tolerate one "fix still landing" round; stop after 2 consecutive no-progress rounds
 
   for (let round = 1; round <= maxRounds; round++) {
     log(`[council-loop] round ${round}/${maxRounds}: convening the panel…`);
@@ -68,6 +72,18 @@ export async function runCouncilGapLoop(
       log(`[council-loop] READY after ${round} round(s) — the council cleared it.`);
       return { cleared: true, rounds: round, finalVerdict, recordedGapIds };
     }
+    // No-progress breaker: if the blocking-gap set is unchanged for MAX_STALL consecutive rounds, the fixer
+    // isn't moving the needle — stop burning provider budget re-discovering the same gaps (still tracked).
+    const key = gapKey(finalVerdict);
+    if (round > 1 && key === prevKey) {
+      if (++stall >= MAX_STALL) {
+        log(`[council-loop] no progress for ${stall} rounds (same ${finalVerdict.blockingGaps.length} blocking gap(s)) — stopping early; gaps remain tracked.`);
+        return { cleared: false, rounds: round, finalVerdict, recordedGapIds };
+      }
+    } else {
+      stall = 0;
+    }
+    prevKey = key;
     // Never lose a defined problem: record each blocking gap before attempting a fix.
     for (const g of finalVerdict.blockingGaps) {
       const id = await recordGap(g);

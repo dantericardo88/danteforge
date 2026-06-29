@@ -31,6 +31,8 @@ export interface AscendOptions {
   /** After the run, convene the adversarial council readiness gate (multi-lens gap-hunt → READY/NOT_READY,
    *  blocking gaps recorded to the ledger). Makes the frontier loop end with builder-never-judges scrutiny. */
   councilGate?: boolean;
+  /** Reviewer provider for the council gate — must differ from the forge/build provider to certify (builder-never-judges). */
+  reviewerProvider?: string;
   /**
    * Execution mode: 'advisory' (default) writes guidance only; 'forge' calls
    * `danteforge forge "<goal>"` directly for each dimension, bypassing tasks/PLAN.md.
@@ -98,7 +100,9 @@ export async function ascend(options: AscendOptions = {}): Promise<AscendResult>
     logger.info('[ascend] Convening the council readiness gate…');
     try {
       const { councilReview } = await import('./council-review.js');
-      await councilReview({ cwd });
+      // reportOnly: a converged ascend is not marked failed merely because the council found a follow-up gap —
+      // the gaps are recorded to the ledger and surfaced, but ascend's own exit status is preserved.
+      await councilReview({ cwd, reportOnly: true, reviewerProvider: options.reviewerProvider });
     } catch (e) { logger.warn(`[ascend] council gate error (non-fatal): ${e instanceof Error ? e.message : String(e)}`); }
   }
   return _dnResult ?? { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: 0, ceilingReports: [], finalScore: 0, success: false };

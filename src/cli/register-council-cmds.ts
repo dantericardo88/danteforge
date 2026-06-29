@@ -23,6 +23,8 @@ program
   .option('--json', 'Machine-readable JSON output')
   .option('--loop', 'Continuous mode: review → record gaps → fix → re-review, until READY or --rounds')
   .option('--rounds <n>', 'Max review→fix rounds in --loop mode (default 5)')
+  .option('--reviewer <provider>', 'Provider the reviewer runs on — MUST differ from the build provider to certify READY (builder-never-judges)')
+  .option('--lens <id:mandate...>', 'Extra adversarial lens(es) as id:mandate (repeatable) — extend the panel for domain-specific gaps')
   .addHelpText('after', `
 Examples:
   danteforge council-review                One-shot gap-hunt; records blocking gaps to the ledger
@@ -32,10 +34,14 @@ Examples:
     void (async () => {
       try {
         const { councilReview } = await import('./commands/council-review.js');
+        const lensSpecs = (opts['lens'] as string[] | undefined) ?? [];
+        const lenses = lensSpecs.map((s) => { const i = s.indexOf(':'); return i > 0 ? { id: s.slice(0, i).trim(), mandate: s.slice(i + 1).trim() } : null; }).filter((x): x is { id: string; mandate: string } => !!x && x.id.length > 0 && x.mandate.length > 0);
         await councilReview({
           json: opts['json'] as boolean | undefined,
           loop: opts['loop'] as boolean | undefined,
           rounds: opts['rounds'] !== undefined ? parseInt(opts['rounds'] as string, 10) : undefined,
+          reviewerProvider: opts['reviewer'] as string | undefined,
+          lenses: lenses.length ? lenses : undefined,
         });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');

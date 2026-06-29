@@ -240,12 +240,14 @@ program
   .option('--no-verify-loop', 'skip mid-loop verify pass before first cycle')
   .option('--advisory', 'write guidance files per dimension without executing forge (preview mode)')
   .option('--council-gate', 'after the run, convene the adversarial council readiness gate (gaps → ledger)')
+  .option('--reviewer <provider>', 'reviewer provider for --council-gate (must differ from forge provider to certify)')
   .action((opts) => {
     void (async () => {
       try {
         const { ascend } = await import('./commands/ascend.js');
         await ascend({
           councilGate: opts.councilGate as boolean | undefined,
+          reviewerProvider: opts.reviewer as string | undefined,
           target: opts.target as number | undefined,
           maxCycles: opts.maxCycles as number | undefined,
           dryRun: opts.dryRun as boolean | undefined,

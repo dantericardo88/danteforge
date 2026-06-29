@@ -43,6 +43,33 @@ describe('council-review command — verdict + ledger recording (injected review
     process.exitCode = prevExit;
   });
 
+  test('builder-never-judges: a NON-independent reviewer can never certify READY (independence gap)', async () => {
+    const prevExit = process.exitCode;
+    const recorded: CouncilGap[] = [];
+    // Reviewer says everything is satisfied, but it is NOT independent of the builder → must still be NOT_READY.
+    await councilReview({
+      json: true,
+      _forceNonIndependent: true,
+      _review: async (l) => ({ lens: l.id, satisfied: true, gaps: [] }),
+      _recordGap: async (g) => { recorded.push(g); return `CH-${recorded.length}`; },
+    });
+    assert.ok(recorded.some((g) => g.lens === 'independence'), 'an independence gap was recorded');
+    assert.equal(process.exitCode, 2, 'non-independent review cannot be READY');
+    process.exitCode = prevExit;
+  });
+
+  test('reportOnly does NOT mutate the exit code even on NOT_READY (ascend gate)', async () => {
+    const prevExit = process.exitCode;
+    process.exitCode = 0;
+    await councilReview({
+      json: true, reportOnly: true,
+      _review: async (l) => ({ lens: l.id, satisfied: false, gaps: [{ lens: l.id, title: 'g', problem: 'p', evidence: 'e', opportunity: 'o', blocking: true }] }),
+      _recordGap: async () => 'CH-1',
+    });
+    assert.equal(process.exitCode, 0, 'reportOnly preserves the caller exit code');
+    process.exitCode = prevExit;
+  });
+
   test('--loop exits non-zero when it cannot clear within --rounds', async () => {
     const prevExit = process.exitCode;
     await councilReview({
