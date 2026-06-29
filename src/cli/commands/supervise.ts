@@ -21,6 +21,7 @@ import {
 import { installKeepalive } from '../../core/supervisor-keepalive.js';
 import { writeEscalation } from '../../core/supervisor-notify.js';
 import { acquireSupervisorLock, releaseSupervisorLock } from '../../core/supervisor-lock.js';
+import { measuredReceiptGate } from '../../core/measured-completion-gate.js';
 
 export interface SuperviseOptions {
   goal?: string;
@@ -174,7 +175,11 @@ export async function supervise(goalArg: string | undefined, options: SuperviseO
       lastTargetReached = targetReached;
       return summary;
     },
-    targetReached: async () => lastTargetReached,
+    // Success is anchored to MEASURED truth, not just the engine's stdout marker: the supervisor declares the
+    // campaign done only if the engine signalled success AND a fresh T5+ receipt proves it (same gate the inner
+    // loop uses). Closes the last soft-success surface — a future engine that logs a success token on a
+    // non-gated path can't false-positive the campaign.
+    targetReached: async () => lastTargetReached && (await measuredReceiptGate(cwd).then((r) => r.passed).catch(() => false)),
     // Measured progress proxy → makes the circuit breaker real: if passing receipts don't grow across
     // restarts, the loop isn't making measured progress and the breaker escalates instead of burning forever.
     measureGrounding: async () => countPassingReceipts(cwd),
