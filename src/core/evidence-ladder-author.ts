@@ -10,7 +10,7 @@
 //   • distinct-command — refuses cloned commands; requires >=3 genuinely-distinct product demonstrations.
 //   • THE CATCH-22 — authors each rung in a SEPARATE `session-record` child process, so each gets its own
 //                 PROCESS_SESSION_ID → distinct sessions BY CONSTRUCTION (sidesteps force-cold collapse; no
-//                 validate hack needed).
+//                 validate shortcut needed).
 //   • orphan / shared / decoupled — verified AFTER authoring via the real checkOutcomeIntegrity; the tool
 //                 reports the precise violation and does NOT claim success (it never fabricates a pass).
 //   • contiguity / T7 consensus — verified via the canonical deriveDimScoreGated: success requires the walk to

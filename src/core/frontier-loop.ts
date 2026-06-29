@@ -26,7 +26,7 @@ export type CourtVerdict = 'VALIDATED' | 'REJECTED' | 'INSUFFICIENT' | 'NOT_READ
  * real 9 ONLY when `validatedWritten === true && ceilingWritten === false`. frontier-review can return
  * `result.verdict === 'VALIDATED'` yet write a CEILING (validatedWritten=false, ceilingWritten=true) when CIP
  * blocks it — so trusting raw "VALIDATED" text would let the loop FALSELY stop on a CIP-blocked pass and mint a
- * fake 9. A bare "VALIDATED" with no JSON proof is therefore NOT trusted. Pure; exported for the pin.
+ * an unearned 9. A bare "VALIDATED" with no JSON proof is therefore NOT trusted. Pure; exported for the pin.
  */
 export function classifyCourtOutput(stdout: string): CourtVerdict {
   let validatedWritten = false; let ceilingWritten = false; let resultVerdict = '';

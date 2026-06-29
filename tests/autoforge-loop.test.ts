@@ -645,7 +645,9 @@ describe('runAutoforgeLoop integration — _checkProtectedPaths seam', () => {
     // workflowStage:'tasks' is in FORGE_PREREQUISITE_STAGES so determineNextCommand routes to 'forge',
     // which triggers _checkProtectedPaths
     const forgeStageState = makeState({ workflowStage: 'tasks', currentPhase: 1, tasks: { 1: [{ name: 'task-a' }] } });
-    const ctx = makeContext({ dryRun: false, state: forgeStageState });
+    // cycleCount:1 → the loop increments to 2, an EVEN/breadth wave that routes to forge (Depth-Doctrine wave
+    // alternation makes odd cycles depth/validate, which never hits the forge protected-path gate).
+    const ctx = makeContext({ dryRun: false, state: forgeStageState, cycleCount: 1 });
     const result = await runAutoforgeLoop(ctx, makeMockDeps({
       loadState: async () => forgeStageState,
       _checkProtectedPaths: async () => ({ approved: false, blocked: ['src/core/state.ts'] }),
@@ -655,7 +657,8 @@ describe('runAutoforgeLoop integration — _checkProtectedPaths seam', () => {
 
   it('sets blockedArtifacts to the blocked files list from _checkProtectedPaths', async () => {
     const forgeStageState = makeState({ workflowStage: 'tasks', currentPhase: 1, tasks: { 1: [{ name: 'task-a' }] } });
-    const ctx = makeContext({ dryRun: false, state: forgeStageState });
+    // cycleCount:1 → next cycle is breadth/forge (see note above) so the protected-path gate is reached.
+    const ctx = makeContext({ dryRun: false, state: forgeStageState, cycleCount: 1 });
     const result = await runAutoforgeLoop(ctx, makeMockDeps({
       loadState: async () => forgeStageState,
       _checkProtectedPaths: async () => ({ approved: false, blocked: ['src/core/state.ts', 'src/cli/index.ts'] }),

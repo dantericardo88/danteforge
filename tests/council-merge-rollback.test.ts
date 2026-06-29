@@ -26,6 +26,10 @@ async function initRepo(dir: string): Promise<void> {
   await git(dir, ['config', 'user.email', 't@t']);
   await git(dir, ['config', 'user.name', 't']);
   await git(dir, ['config', 'commit.gpgsign', 'false']);
+  // Keep LF in the working tree so byte-exact content assertions hold on Windows (git's autocrlf would
+  // otherwise rewrite git-roundtripped files to CRLF). This test asserts merge/rollback content, not EOLs.
+  await git(dir, ['config', 'core.autocrlf', 'false']);
+  await git(dir, ['config', 'core.eol', 'lf']);
 }
 
 /** A patch that 3-way-CONFLICTS with HEAD: branch edits line 2 one way, main another. */

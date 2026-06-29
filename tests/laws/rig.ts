@@ -33,6 +33,9 @@ export async function makeRepo(dir: string): Promise<string> {
   git(dir, 'init', '-q', '-b', 'main');
   git(dir, 'config', 'user.email', 'laws@test');
   git(dir, 'config', 'user.name', 'laws');
+  // Keep LF in the working tree so content assertions hold on Windows (git autocrlf would rewrite to CRLF).
+  git(dir, 'config', 'core.autocrlf', 'false');
+  git(dir, 'config', 'core.eol', 'lf');
   await fs.writeFile(path.join(dir, 'base.txt'), 'base\n', 'utf8');
   git(dir, 'add', 'base.txt');
   git(dir, 'commit', '-qm', 'base');

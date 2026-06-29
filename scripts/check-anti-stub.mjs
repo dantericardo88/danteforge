@@ -56,6 +56,8 @@ const fullyExemptFiles = [
   'pre-commit.mjs',                    // depth-doctrine guard — defines the patterns it enforces
   'meta-solver.ts',                    // solver no-stub gate — stores stub/lie patterns as detection data
   'capability-test-conduct.ts',        // conductor CLI — documents the literal STUB sensitivity verdict it polices
+  'gov-demo.ts',                       // governance DEMO — deliberately assembles a stub marker to show the no-stub gate firing
+  'frontier-spec.ts',                  // defines the TODO placeholder-detection regex (TODO_RE) + documents it by design
 ];
 
 // Files exempt from expanded pattern checks only (config, doctrine, docs, code-review tools)
