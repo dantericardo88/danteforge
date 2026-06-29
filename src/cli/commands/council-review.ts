@@ -118,9 +118,9 @@ async function resolveReviewer(
 }
 
 /** The --loop fixer: spawn `danteforge magic "<gaps>"` — `magic [goal]` is the goal-driven hero command (forge
- *  takes a PHASE, and autoforge's positional goal is advisory-only; magic actually builds toward the goal). So
- *  each round genuinely attempts the fixes the council named. The no-progress breaker stops the loop if the
- *  blocking-gap set doesn't move, so a fixer that can't act never burns the full round budget. */
+ *  takes a PHASE positional, so it can't consume a free-text goal). magic threads the goal through its plan to
+ *  autoforge(goal)/specify(goal), so each round genuinely attempts the fixes the council named. The no-progress
+ *  breaker stops the loop if the blocking-gap set doesn't move, so a fixer that can't act never burns budget. */
 function goalFixer(cwd: string): (gaps: CouncilGap[], round: number) => Promise<void> {
   return async (gaps) => {
     const { spawn } = await import('node:child_process');

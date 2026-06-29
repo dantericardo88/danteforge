@@ -5,7 +5,7 @@
 // its proposed file operations, scored by the deterministic pre-filter, and only the winner is applied
 // through the executor's existing apply+test pipeline.
 //
-// This is the honest "wire best-of-N into the live loop" increment: it kills stub / oversized / trust-surface
+// This is the honest "wire best-of-N into the live loop" increment: it kills anti-stub-flagged / oversized / trust-surface
 // candidates (the "~two-thirds unproductive proposals" COMPILOT measured) before the expensive apply+test
 // step, with zero regression risk (N=1 reproduces today's behavior exactly). Full Layer-2/3 test-MEASURED
 // selection across applied candidates (worktree-isolated) is the next depth wave; this is Layer-1 selection.
@@ -48,7 +48,7 @@ export function opsToChangedFiles(ops: ParsedOp[]): ChangedFile[] {
 
 /**
  * Default reward: prefer candidates that change MORE real files while carrying FEWER pre-filter findings. A
- * trust-surface or stub finding is heavily penalized so a clean candidate always outranks a dirty one. Pure.
+ * trust-surface or anti-stub finding is heavily penalized so a clean candidate always outranks a dirty one. Pure.
  */
 export function defaultForgeReward(candidate: ForgeCandidate, pre: PrefilterResult): number {
   return candidate.opCount - pre.findings.length * 100;

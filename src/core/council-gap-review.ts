@@ -49,7 +49,7 @@ export interface CouncilGapVerdict {
 
 export interface CouncilGapReviewDeps {
   /** Dispatch ONE independent reviewer for a lens (builder-never-judges — the reviewer is not the builder).
-   *  Real driver: a council adapter / sub-agent. Tests: a fake. */
+   *  Real driver: a council adapter / sub-agent. Tests: an injected double. */
   review: (lens: CouncilLens) => Promise<LensReview>;
   log?: (msg: string) => void;
 }

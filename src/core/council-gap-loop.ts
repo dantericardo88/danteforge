@@ -13,7 +13,7 @@ import {
 } from './council-gap-review.js';
 
 export interface CouncilGapLoopDeps extends CouncilGapReviewDeps {
-  /** Apply fixes for this round's blocking gaps. Real driver: forge/autoforge/agents. Tests: a fake. */
+  /** Apply fixes for this round's blocking gaps. Real driver: magic/forge/agents. Tests: an injected double. */
   fix: (gaps: CouncilGap[], round: number) => Promise<void>;
   /** Record a discovered gap in the ledger; returns its id (or null if skipped/duplicate). Default: addChallenge. */
   recordGap?: (gap: CouncilGap) => Promise<string | null>;

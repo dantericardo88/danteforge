@@ -71,7 +71,7 @@ export function isPolicyStop(reason: string): boolean {
  * Found by dogfooding — `danteforge doctor` reported "No verified live LLM provider" with no API key and
  * Ollama not running. This is DETERMINISTIC: restarting cannot fix it, so the supervisor must pause for the
  * operator immediately (in every posture) instead of burning restarts until the circuit breaker. Distinct
- * from a provider OUTAGE (a temporary usage/auth wall that DOES reopen) handled by detectProviderOutage.
+ * from a provider OUTAGE (a transient usage/auth wall that reopens later) handled by detectProviderOutage.
  */
 export function isConfigBlock(reason: string): boolean {
   return /no verified live (?:llm )?provider|no llm (?:provider|detected|available)|provider[^.]{0,40}not (?:available|configured)|configure a provider|not configured for forge|ollama[^.]{0,40}not (?:available|running)|model[^.]{0,40}not available from the configured endpoint|not available for the selected provider|model[^.]{0,40}not (?:available|configured|found)/i.test(reason);
