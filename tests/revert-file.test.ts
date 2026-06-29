@@ -21,6 +21,9 @@ async function makeGitRepo(): Promise<string> {
   await execFileAsync('git', ['init', '-q'], { cwd: dir });
   await execFileAsync('git', ['config', 'user.email', 't@t'], { cwd: dir });
   await execFileAsync('git', ['config', 'user.name', 't'], { cwd: dir });
+  // Keep LF in the working tree so restored-content assertions hold on Windows (autocrlf would rewrite to CRLF).
+  await execFileAsync('git', ['config', 'core.autocrlf', 'false'], { cwd: dir });
+  await execFileAsync('git', ['config', 'core.eol', 'lf'], { cwd: dir });
   await fs.writeFile(path.join(dir, 'tracked.ts'), 'export const a = 1;\n', 'utf8');
   await execFileAsync('git', ['add', 'tracked.ts'], { cwd: dir });
   await execFileAsync('git', ['commit', '-q', '-m', 'init'], { cwd: dir });

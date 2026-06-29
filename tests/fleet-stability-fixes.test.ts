@@ -28,6 +28,9 @@ async function makeRepo(name: string): Promise<string> {
   git(dir, 'init', '-q', '-b', 'main');
   git(dir, 'config', 'user.email', 't@t');
   git(dir, 'config', 'user.name', 't');
+  // Keep LF in the working tree so content assertions hold on Windows (autocrlf would rewrite to CRLF).
+  git(dir, 'config', 'core.autocrlf', 'false');
+  git(dir, 'config', 'core.eol', 'lf');
   await fs.writeFile(path.join(dir, 'base.txt'), 'base\n', 'utf8');
   git(dir, 'add', 'base.txt');
   git(dir, 'commit', '-qm', 'base');
@@ -164,7 +167,7 @@ describe('source pins — the main-tree and stale-score regressions cannot quiet
   const read = (rel: string) => readFileSync(path.join(path.resolve('.'), rel), 'utf8');
 
   test('harden-crusade drives autoresearch ISOLATED, never --allow-dirty on the main tree', () => {
-    const src = read('src/cli/commands/harden-crusade.ts');
+    const src = read('src/cli/commands/harden-crusade-runners.ts');
     const fn = /async function defaultRunAutoResearch[\s\S]*?\n\}/.exec(src)?.[0] ?? '';
     assert.match(fn, /--isolate/, 'defaultRunAutoResearch must pass --isolate');
     assert.match(fn, /--isolate-branch/, 'deterministic branch so kept work can be merged back');
@@ -176,7 +179,7 @@ describe('source pins — the main-tree and stale-score regressions cannot quiet
     // The measurement IS the dim's capability_test — pass/fail, never a number scraped from stdout.
     // Without --exit-code-metric the harness greps stdout for digits (DanteSecurity parsed a bogus
     // "-7" out of dates in dante.py's banner and the metric could never improve).
-    const src = read('src/cli/commands/harden-crusade.ts');
+    const src = read('src/cli/commands/harden-crusade-runners.ts');
     const fn = /async function defaultRunAutoResearch[\s\S]*?\n\}/.exec(src)?.[0] ?? '';
     assert.match(fn, /'--measurement-command',\s*measurementCommand,\s*'--exit-code-metric'/,
       'the same args.push must pass --exit-code-metric whenever it passes --measurement-command');
