@@ -117,22 +117,22 @@ async function resolveReviewer(
   return { review: llmLensReviewer(cwd, reviewer ?? builder), independent, builder, reviewer };
 }
 
-/** The --loop fixer: spawn `danteforge forge "<gap>"` per blocking gap — forge ACTS on its goal argument
- *  (unlike `autoforge --auto`, whose positional goal is advisory only), so each round actually attempts the
- *  fixes the council named. The no-progress breaker in runCouncilGapLoop stops the loop if gaps don't move. */
-function forgeFixer(cwd: string): (gaps: CouncilGap[], round: number) => Promise<void> {
+/** The --loop fixer: spawn `danteforge magic "<gaps>"` — `magic [goal]` is the goal-driven hero command (forge
+ *  takes a PHASE, and autoforge's positional goal is advisory-only; magic actually builds toward the goal). So
+ *  each round genuinely attempts the fixes the council named. The no-progress breaker stops the loop if the
+ *  blocking-gap set doesn't move, so a fixer that can't act never burns the full round budget. */
+function goalFixer(cwd: string): (gaps: CouncilGap[], round: number) => Promise<void> {
   return async (gaps) => {
     const { spawn } = await import('node:child_process');
-    for (const g of gaps.slice(0, 4)) {
-      const goal = `${g.title}: ${g.problem}. Outcome: ${g.opportunity}`;
-      await new Promise<void>((resolve) => {
-        const child = spawn(process.execPath, [process.argv[1]!, 'forge', goal, '--light'], { cwd, env: process.env });
-        child.stdout?.on('data', (b: Buffer) => process.stdout.write(b));
-        child.stderr?.on('data', (b: Buffer) => process.stdout.write(b));
-        child.on('error', () => resolve());
-        child.on('close', () => resolve());
-      });
-    }
+    const goal = 'Address these council-found gaps:\n'
+      + gaps.slice(0, 6).map((g) => `- ${g.title}: ${g.problem} (outcome: ${g.opportunity})`).join('\n');
+    await new Promise<void>((resolve) => {
+      const child = spawn(process.execPath, [process.argv[1]!, 'magic', goal], { cwd, env: process.env });
+      child.stdout?.on('data', (b: Buffer) => process.stdout.write(b));
+      child.stderr?.on('data', (b: Buffer) => process.stdout.write(b));
+      child.on('error', () => resolve());
+      child.on('close', () => resolve());
+    });
   };
 }
 
@@ -190,7 +190,7 @@ export async function councilReview(options: CouncilReviewOptions = {}): Promise
   if (options.loop) {
     const { runCouncilGapLoop } = await import('../../core/council-gap-loop.js');
     const res = await runCouncilGapLoop(
-      { review, fix: options._fix ?? forgeFixer(cwd), recordGap, log: (m) => logger.info(m) },
+      { review, fix: options._fix ?? goalFixer(cwd), recordGap, log: (m) => logger.info(m) },
       { maxRounds: options.rounds ?? 5, cwd, ...reviewConfig },
     );
     if (options.json) { logger.info(JSON.stringify({ cleared: res.cleared, rounds: res.rounds, verdict: res.finalVerdict.verdict, recorded: res.recordedGapIds }, null, 2)); }
