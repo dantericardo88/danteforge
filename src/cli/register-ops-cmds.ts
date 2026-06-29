@@ -14,6 +14,7 @@ program
   .option('--status', 'Print the current campaign state and exit')
   .option('--stop', 'Signal a running supervisor to halt cleanly on its next turn')
   .option('--install-keepalive', 'Generate an OS keepalive (Task Scheduler/launchd/systemd) so it survives host sleep')
+  .option('--from-keepalive', 'Internal: set by the OS keepalive launcher (a sticky-paused campaign stays paused)')
   .option('--dry-run', 'Show what would loop without launching')
   .action((goal: string | undefined, opts) => {
     void (async () => {
@@ -27,6 +28,7 @@ program
           status: opts.status as boolean | undefined,
           stop: opts.stop as boolean | undefined,
           installKeepalive: opts.installKeepalive as boolean | undefined,
+          fromKeepalive: opts.fromKeepalive as boolean | undefined,
           dryRun: opts.dryRun as boolean | undefined,
         });
       } catch (err) {

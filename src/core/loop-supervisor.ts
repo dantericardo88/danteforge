@@ -86,6 +86,7 @@ export async function runSupervisor(
     outcome: SupervisorSummary['outcome'], reason: string, action: SupervisorAction,
   ): Promise<SupervisorSummary> => {
     state.status = outcome === 'paused' ? 'paused' : 'stopped';
+    if (outcome === 'paused') state.pauseSticky = true; // awaits the operator; keepalive must not auto-resume
     state.lastExitReason = reason;
     state.savedAt = new Date(now()).toISOString();
     await save(state);
@@ -105,6 +106,7 @@ export async function runSupervisor(
       },
     );
     state.status = 'paused';
+    state.pauseSticky = true; // ceiling/escalation awaits the operator; keepalive must not auto-resume
     state.escalations.push({ at: new Date(now()).toISOString(), reason: action.reason });
     state.savedAt = new Date(now()).toISOString();
     await save(state);

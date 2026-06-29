@@ -37,6 +37,9 @@ export interface SupervisorState {
   status: 'running' | 'paused' | 'stopped';
   /** Operator stop request — a running supervisor honors this on its next loop turn. */
   stopRequested: boolean;
+  /** A pause that awaits the OPERATOR. The keepalive must NOT auto-resume it; only a foreground operator
+   *  re-run clears it. Without this, the keepalive relaunches and silently un-pauses a paused campaign. */
+  pauseSticky: boolean;
   escalations: SupervisorEscalation[];
 }
 
@@ -59,6 +62,7 @@ export function freshSupervisorState(
     nextResumeAtMs: null,
     status: 'running',
     stopRequested: false,
+    pauseSticky: false,
     escalations: [],
   };
 }

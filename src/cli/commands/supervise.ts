@@ -20,6 +20,7 @@ import {
 } from '../../core/supervisor-state.js';
 import { installKeepalive } from '../../core/supervisor-keepalive.js';
 import { writeEscalation } from '../../core/supervisor-notify.js';
+import { acquireSupervisorLock, releaseSupervisorLock } from '../../core/supervisor-lock.js';
 
 export interface SuperviseOptions {
   goal?: string;
@@ -32,6 +33,8 @@ export interface SuperviseOptions {
   installKeepalive?: boolean;
   dryRun?: boolean;
   bestOfN?: number;
+  /** Set by the OS keepalive launcher — a sticky-paused campaign is NOT auto-resumed when this is true. */
+  fromKeepalive?: boolean;
 }
 
 const ENGINES = new Set(['autoforge', 'crusade', 'frontier']);
@@ -147,11 +150,19 @@ export async function supervise(goalArg: string | undefined, options: SuperviseO
     return;
   }
 
-  // Resume an existing campaign if one is paused/running for the same engine+goal, else start fresh.
+  // Sticky pause: a campaign paused for the operator (ceiling/policy/config) must NOT be auto-resumed by the
+  // keepalive — only a foreground operator re-run clears it. Without this the scheduler silently un-pauses it.
   const prior = await loadSupervisorState(cwd);
+  if (prior && prior.pauseSticky && prior.status === 'paused' && options.fromKeepalive) {
+    logger.info('[supervise] campaign is paused awaiting the operator — keepalive will not auto-resume. Re-run `danteforge supervise` in the foreground to continue.');
+    return;
+  }
+
+  // Resume an existing campaign if one is paused/running for the same engine+goal, else start fresh. A
+  // foreground re-run of a sticky-paused campaign CLEARS the sticky flag (the operator chose to continue).
   const initial: SupervisorState | undefined =
     prior && prior.engine === engine && prior.goal === goal && prior.status !== 'stopped'
-      ? { ...prior, status: 'running', stopRequested: false }
+      ? { ...prior, status: 'running', stopRequested: false, pauseSticky: false }
       : freshSupervisorState({ goal, target, engine, posture }, new Date().toISOString());
   await saveSupervisorState(initial, cwd);
 
@@ -173,11 +184,23 @@ export async function supervise(goalArg: string | undefined, options: SuperviseO
   };
   const config: SupervisorConfig = { posture, goal, target, engine, maxRestarts: options.maxRestarts ?? 100 };
 
-  logger.info(`[supervise] starting campaign — engine=${engine} target=${target} posture=${posture}`);
-  const res = await runSupervisor(deps, config, initial);
-  logger.info(`[supervise] campaign ended: ${res.outcome} — ${res.reason} (after ${res.restarts} run(s))`);
-  if (res.ceilingDecomposition?.resolution.kind === 'decomposed') {
-    logger.info(`[supervise] ceiling broken into ${res.ceilingDecomposition.resolution.children.length} sub-problem(s) — see ESCALATIONS.md`);
+  // Singleton guard: never let a keepalive-launched supervisor and a foreground one run the same campaign
+  // concurrently (they would clobber state + double-launch engines). PID-liveness, not a TTL.
+  const lock = await acquireSupervisorLock(cwd);
+  if (!lock.acquired) {
+    logger.info(`[supervise] another supervisor is already running (pid ${lock.heldByPid}) — exiting.`);
+    return;
   }
-  if (res.outcome !== 'stopped-success') process.exitCode = res.outcome === 'stopped-operator' ? 0 : 2;
+
+  logger.info(`[supervise] starting campaign — engine=${engine} target=${target} posture=${posture}`);
+  try {
+    const res = await runSupervisor(deps, config, initial);
+    logger.info(`[supervise] campaign ended: ${res.outcome} — ${res.reason} (after ${res.restarts} run(s))`);
+    if (res.ceilingDecomposition?.resolution.kind === 'decomposed') {
+      logger.info(`[supervise] ceiling broken into ${res.ceilingDecomposition.resolution.children.length} sub-problem(s) — see ESCALATIONS.md`);
+    }
+    if (res.outcome !== 'stopped-success') process.exitCode = res.outcome === 'stopped-operator' ? 0 : 2;
+  } finally {
+    await releaseSupervisorLock(cwd);
+  }
 }

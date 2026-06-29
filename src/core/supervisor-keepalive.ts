@@ -42,9 +42,10 @@ function escapeXml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
 }
 
-/** The `supervise` argv the keepalive launches. */
+/** The `supervise` argv the keepalive launches. `--from-keepalive` makes a sticky-paused campaign stay paused
+ *  (the scheduler must not silently un-pause what's waiting for the operator). */
 export function keepaliveArgs(o: KeepaliveOptions): string[] {
-  const args = ['supervise', '--engine', o.engine, '--target', String(o.target), '--posture', o.posture];
+  const args = ['supervise', '--engine', o.engine, '--target', String(o.target), '--posture', o.posture, '--from-keepalive'];
   if (o.goal) args.push('--goal', o.goal);
   return args;
 }

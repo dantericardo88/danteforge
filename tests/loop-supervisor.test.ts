@@ -110,6 +110,8 @@ describe('loop-exit-classifier — the tiered auto-reengage brain', () => {
     assert.ok(isConfigBlock('No verified live LLM provider is available'));
     assert.ok(isConfigBlock('Ollama model "llama3" is not available from the configured endpoint'));
     assert.ok(isConfigBlock('configure a provider with working model access'));
+    assert.ok(isConfigBlock('OpenAI model "gpt-foo" is not available from the configured endpoint'));
+    assert.ok(isConfigBlock('The configured model is not available for the selected provider'));
     assert.ok(!isConfigBlock('quorum not met'));
     assert.ok(!isConfigBlock('max cycles reached (20)'));
   });

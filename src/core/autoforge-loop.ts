@@ -59,6 +59,9 @@ import { startWave, finishWave } from './wave-ledger.js';
 
 const MAX_RETRIES = 3;
 const COMPLETION_THRESHOLD = 95;
+/** Max validate cycles the loop will spend trying to mint a measured receipt before stopping as BLOCKED
+ *  (unproven) rather than falsely declaring COMPLETE. */
+const MAX_MEASURED_VALIDATE_ATTEMPTS = 2;
 
 // ── Circuit breaker with exponential backoff ────────────────────────────────
 
@@ -656,7 +659,31 @@ export async function runAutoforgeLoop(ctx: AutoforgeLoopContext, deps?: Partial
       } else {
         nextCommand = determineNextCommand(ctx.state, tracker, scores);
       }
-      if (!nextCommand) { ctx.loopState = AutoforgeLoopState.COMPLETE; break; }
+      if (!nextCommand) {
+        // SECOND completion path (all soft phases report done). The MEASURED firewall applies here too — a soft
+        // "nothing left to do" is NOT proof. Route to validate to mint a receipt; COMPLETE only once the gate
+        // passes; BLOCK (never falsely COMPLETE) if validate can't produce a receipt after a bounded retry.
+        if (loopDeps._measuredGate) {
+          const measured = await loopDeps._measuredGate(cwd).catch(() => null);
+          if (measured && measured.passed) {
+            ctx.loopState = AutoforgeLoopState.COMPLETE; break;
+          }
+          const attempts = (ctx.measuredValidateAttempts ?? 0) + 1;
+          ctx.measuredValidateAttempts = attempts;
+          if (attempts > MAX_MEASURED_VALIDATE_ATTEMPTS) {
+            logger.warn(`[Autoforge] Soft phases complete but MEASURED gate still failing after ${attempts - 1} validate attempt(s): ${measured?.reason ?? 'gate error'} — stopping as BLOCKED (unproven), NOT complete.`);
+            ctx.loopState = AutoforgeLoopState.BLOCKED;
+            ctx.blockedArtifacts = ['measured-receipt'];
+            ctx.state.auditLog.push(`${new Date().toISOString()} | autoforge-loop: BLOCKED — soft-complete but no measured receipt after ${attempts - 1} validate attempt(s)`);
+            await (loopDeps.saveState ?? saveState)(ctx.state, { cwd });
+            break;
+          }
+          logger.warn(`[Autoforge] Soft phases complete but MEASURED gate failed (${measured?.reason ?? 'gate error'}) — running validate to mint a receipt (attempt ${attempts}/${MAX_MEASURED_VALIDATE_ATTEMPTS}).`);
+          nextCommand = 'validate --all --force-cold';
+        } else {
+          ctx.loopState = AutoforgeLoopState.COMPLETE; break;
+        }
+      }
       if (nextCommand === 'specify --refine') {
         const idea = ctx.goal ?? 'Improve and refine the existing specification';
         nextCommand = `specify "${idea.replace(/"/g, '\\"')}" --refine --light`;

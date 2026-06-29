@@ -49,6 +49,8 @@ export interface AutoforgeLoopContext {
   /** Best-of-N budget for forge cycles: generate N candidates and apply the pre-filter-selected best.
    *  Default undefined/1 = single-candidate (no extra LLM cost). */
   bestOfN?: number;
+  /** How many times the measured-gate firewall has forced a validate cycle this run (anti-infinite-loop). */
+  measuredValidateAttempts?: number;
 }
 
 export interface AutoforgeGuidance {
