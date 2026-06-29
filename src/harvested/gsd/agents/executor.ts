@@ -289,8 +289,9 @@ async function executeForgeTask(task: WaveTask, index: number, totalTasks: numbe
     if (n === 1) {
       result = await generateOne(0);
     } else {
-      const candidates: string[] = [];
-      for (let c = 0; c < n; c++) candidates.push(await generateOne(c));
+      // Generate the N candidates concurrently — selection is pure/order-independent, so serial N× latency was
+      // pure waste (and risked the per-task timeout on slow providers).
+      const candidates: string[] = await Promise.all(Array.from({ length: n }, (_, c) => generateOne(c)));
       if (options?._selectForge) {
         const selection = await options._selectForge(candidates);
         result = selection.chosen?.result ?? candidates[0]!;

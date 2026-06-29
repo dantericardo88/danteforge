@@ -44,21 +44,26 @@ export async function acquireSupervisorLock(
   const isAlive = deps._isAlive ?? defaultIsAlive;
   const now = deps._now ?? (() => Date.now());
   const lockPath = path.join(cwd, SUPERVISOR_LOCK_FILE);
+  const payload = JSON.stringify({ pid: process.pid, startedAt: new Date(now()).toISOString() }, null, 2);
 
-  try {
-    const info = JSON.parse(await fs.readFile(lockPath, 'utf8')) as SupervisorLockInfo;
-    if (typeof info.pid === 'number' && info.pid !== process.pid && isAlive(info.pid)) {
-      return { acquired: false, heldByPid: info.pid };
+  // Exclusive-create (flag 'wx') makes the WRITE atomic: if two supervisors race, only one create succeeds —
+  // closing the read-then-write TOCTOU window. We re-check the holder on EEXIST in case the racer is a live peer.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    let holder: SupervisorLockInfo | null = null;
+    try { holder = JSON.parse(await fs.readFile(lockPath, 'utf8')) as SupervisorLockInfo; } catch { holder = null; }
+    if (holder && typeof holder.pid === 'number' && holder.pid !== process.pid && isAlive(holder.pid)) {
+      return { acquired: false, heldByPid: holder.pid };
     }
-  } catch {
-    // no lock / malformed → we may take it
-  }
-
-  try {
-    await fs.mkdir(path.dirname(lockPath), { recursive: true });
-    await fs.writeFile(lockPath, JSON.stringify({ pid: process.pid, startedAt: new Date(now()).toISOString() }, null, 2), 'utf8');
-  } catch {
-    // best-effort — if we can't write the lock, proceed rather than block the campaign
+    // No LIVE holder (missing / malformed / dead / ours) → clear it and try to create exclusively.
+    await fs.rm(lockPath, { force: true }).catch(() => {});
+    try {
+      await fs.mkdir(path.dirname(lockPath), { recursive: true });
+      await fs.writeFile(lockPath, payload, { encoding: 'utf8', flag: 'wx' });
+      return { acquired: true };
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === 'EEXIST') continue; // a racer created it — re-check the holder
+      return { acquired: true }; // other write error → best-effort proceed rather than block the campaign
+    }
   }
   return { acquired: true };
 }

@@ -76,9 +76,13 @@ export async function saveSupervisorState(
   cwd: string = process.cwd(),
   _write?: WriteFn,
 ): Promise<void> {
+  // Atomic write (temp + rename): a crash mid-write must not leave a TRUNCATED state file, which loadState
+  // would treat as malformed → null → a SILENT fresh campaign (losing restart/escalation history).
   const write = _write ?? (async (p: string, d: string) => {
     await fs.mkdir(path.dirname(p), { recursive: true });
-    await fs.writeFile(p, d, 'utf8');
+    const tmp = `${p}.tmp-${process.pid}`;
+    await fs.writeFile(tmp, d, 'utf8');
+    await fs.rename(tmp, p);
   });
   try {
     await write(path.join(cwd, SUPERVISOR_STATE_FILE), JSON.stringify(state, null, 2));
