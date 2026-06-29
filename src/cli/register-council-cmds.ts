@@ -16,6 +16,24 @@ function parseMemberSlots(spec: string): Record<string, number> {
 }
 
 export function registerCouncilCmds(program: Command, _C: () => Promise<Commands>): void {
+// ── council-review (mechanized /askcouncil gap-hunt) ──────────────────────────
+program
+  .command('council-review')
+  .description('Adversarial multi-lens gap-hunt — READY/NOT_READY verdict + defined gaps recorded to the ledger (builder-never-judges)')
+  .option('--json', 'Machine-readable JSON output')
+  .action((opts: Record<string, unknown>) => {
+    void (async () => {
+      try {
+        const { councilReview } = await import('./commands/council-review.js');
+        await councilReview({ json: opts['json'] as boolean | undefined });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'council-review');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
 // ── council ──────────────────────────────────────────────────────────────────
 
 program
