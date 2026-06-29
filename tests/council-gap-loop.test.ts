@@ -77,6 +77,18 @@ describe('council-gap-loop — review → record → fix → re-review until REA
     assert.ok(res.recordedGapIds.length >= 1);
   });
 
+  test('no-progress breaker stops EARLY (well before maxRounds) when the gap set never changes', async () => {
+    let fixCalls = 0;
+    const res = await runCouncilGapLoop({
+      review: async (l) => blocked(l), // identical blocking gap every round
+      fix: async () => { fixCalls++; }, // a fix that lands nothing
+      recordGap: async () => 'CH-1',
+    }, { maxRounds: 10 });
+    assert.equal(res.cleared, false);
+    assert.equal(res.rounds, 3, 'MAX_STALL=2 stops at round 3 (round 2 stall=1, round 3 stall=2), not round 10');
+    assert.equal(fixCalls, 2, 'fixer ran on rounds 1 and 2, then the breaker tripped before round 3 fix');
+  });
+
   test('READY on round 1 records nothing and never calls fix', async () => {
     let fixCalls = 0;
     const res = await runCouncilGapLoop({
