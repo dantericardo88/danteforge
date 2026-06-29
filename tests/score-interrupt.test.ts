@@ -3,12 +3,13 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { checkScoreInterrupt, INTERRUPT_ENV, INTERRUPT_SENTINEL } from '../src/core/score-interrupt.js';
 import { saveMatrix, type CompeteMatrix, type MatrixDimension } from '../src/core/compete-matrix.js';
 import { startWave, finishWave } from '../src/core/wave-ledger.js';
 import { resolveResumeIndex } from '../src/core/wave-replay.js';
 
-const ROOT = path.join('X:\\tmp', `score-interrupt-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `score-interrupt-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 async function freshCwd(name: string): Promise<string> {

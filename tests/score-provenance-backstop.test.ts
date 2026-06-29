@@ -2,12 +2,13 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { assertScoreProvenance, writeVerifiedScore, preserveFrozenSpecs, stripUnverifiedValidations } from '../src/core/write-verified-score.js';
 import { pruneRuns, RunLedger, listRuns } from '../src/core/run-ledger.js';
 import type { CompeteMatrix, MatrixDimension } from '../src/core/compete-matrix.js';
 import { signValidation, computeSpecHash, type FrontierSpec } from '../src/core/frontier-spec.js';
 
-const ROOT = path.join('X:\\tmp', `provenance-backstop-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `provenance-backstop-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 function mkMatrix(self: number): CompeteMatrix {

@@ -391,7 +391,7 @@ describe('AscendEngineOptions — Sprint 49 executeMode', () => {
 describe('runAscend — emits durable wave receipts (depth_doctrine rung-8, CH-021)', () => {
   it('a real ascend cycle appends a COMPLETED ascend wave with the canonical schema', async () => {
     const { runAscend } = await import('../src/core/ascend-engine.js');
-    const cwd = path.join('X:\\tmp', `ascend-wave-ledger-${process.pid}-${Date.now()}`);
+    const cwd = path.join(os.tmpdir(), `ascend-wave-ledger-${process.pid}-${Date.now()}`);
     await fs.mkdir(cwd, { recursive: true });
     try {
       await runAscend({

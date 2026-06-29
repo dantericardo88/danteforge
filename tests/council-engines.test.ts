@@ -1,6 +1,7 @@
 // Tests for the 3 council engine modules and adapter judge-mode capture.
 // All tests use injection seams — no real subprocesses, no disk I/O.
 import assert from 'node:assert/strict';
+import os from 'node:os';
 import { describe, it } from 'node:test';
 import { EventEmitter } from 'node:events';
 
@@ -358,10 +359,10 @@ describe('ClaudeCodeAdapter — judge mode', () => {
   it('judge/consult adapters get the builder rope, not the 10-minute default', async () => {
     const { makeAdapter, makeWorkPacket } = await import('../src/cli/commands/council.js');
     const { builderTimeoutMs } = await import('../src/matrix/adapters/adapter-interface.js');
-    const judge = makeAdapter('codex', makeWorkPacket('probe', 'X:\\tmp'), true);
+    const judge = makeAdapter('codex', makeWorkPacket('probe', os.tmpdir()), true);
     assert.equal((judge as unknown as { options: { timeoutMs?: number } }).options.timeoutMs, builderTimeoutMs(),
       'judge mode must carry the env-tunable rope (run 3j/3k: consults died at the 10-min default)');
-    const builderModeAdapter = makeAdapter('codex', makeWorkPacket('probe', 'X:\\tmp'), false);
+    const builderModeAdapter = makeAdapter('codex', makeWorkPacket('probe', os.tmpdir()), false);
     assert.equal((builderModeAdapter as unknown as { options: { timeoutMs?: number } }).options.timeoutMs, undefined,
       'build mode keeps its callsite-provided timeout contract');
   });

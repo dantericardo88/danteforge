@@ -2,10 +2,11 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { startWave, finishWave, readWaveLedger } from '../src/core/wave-ledger.js';
 import { planReplay, summarizeRuns, resolveResumeIndex } from '../src/core/wave-replay.js';
 
-const ROOT = path.join('X:\\tmp', `wave-replay-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `wave-replay-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 async function fresh(name: string): Promise<string> {

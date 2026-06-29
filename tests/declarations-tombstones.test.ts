@@ -5,6 +5,7 @@ import { describe, test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import {
   recordDeclarations, tombstoneDeclaration, updateLedgeredOutcomes,
   loadDeclarations, loadAllLedgerEntries, getLedgerDir,
@@ -13,7 +14,7 @@ import { loadMatrix, invalidateMatrixCache } from '../src/core/compete-matrix.js
 import { runDeclarationsCli } from '../src/cli/commands/declarations.js';
 import type { Outcome } from '../src/matrix/types/outcome.js';
 
-const ROOT = path.join('X:\\tmp', `decl-tombstones-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `decl-tombstones-${process.pid}`);
 let n = 0;
 async function makeCwd(): Promise<string> {
   const dir = path.join(ROOT, `case-${n++}`);

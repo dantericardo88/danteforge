@@ -7,10 +7,11 @@ import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { groundOutcomes, PRODUCT_RUN_GROUNDING_NOTE } from '../src/core/outcome-grounding.js';
 import { checkOutcomeIntegrity } from '../src/matrix/engines/outcome-integrity.js';
 
-const R = path.join('X:\\tmp', `grounding-test-${process.pid}`);
+const R = path.join(os.tmpdir(), `grounding-test-${process.pid}`);
 
 before(async () => {
   await fs.mkdir(path.join(R, 'src', 'core'), { recursive: true });

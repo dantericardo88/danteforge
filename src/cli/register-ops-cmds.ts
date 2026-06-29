@@ -4,6 +4,38 @@ type Commands = Awaited<typeof import('./commands/index.js')>;
 
 export function registerOpsCmds(program: Command, C: () => Promise<Commands>): void {
 program
+  .command('supervise [goal]')
+  .description('Auto-reengage Supervisor — keep an autonomous engine looping through transient stops without a human')
+  .option('--engine <name>', 'Inner loop engine: autoforge | crusade | frontier', 'autoforge')
+  .option('--target <score>', 'Loop until the engine reaches this score target', '8')
+  .option('--posture <mode>', 'tiered (restart transient, pause on ceiling) | afk | notify', 'tiered')
+  .option('--max-restarts <n>', 'Hard cap on total relaunches (convergence backstop)', '100')
+  .option('--status', 'Print the current campaign state and exit')
+  .option('--stop', 'Signal a running supervisor to halt cleanly on its next turn')
+  .option('--install-keepalive', 'Generate an OS keepalive (Task Scheduler/launchd/systemd) so it survives host sleep')
+  .option('--dry-run', 'Show what would loop without launching')
+  .action((goal: string | undefined, opts) => {
+    void (async () => {
+      try {
+        await (await C()).supervise(goal, {
+          engine: opts.engine as string | undefined,
+          target: opts.target !== undefined ? parseFloat(opts.target as string) : undefined,
+          posture: opts.posture as ('tiered' | 'afk' | 'notify' | undefined),
+          maxRestarts: opts.maxRestarts !== undefined ? parseInt(opts.maxRestarts as string, 10) : undefined,
+          status: opts.status as boolean | undefined,
+          stop: opts.stop as boolean | undefined,
+          installKeepalive: opts.installKeepalive as boolean | undefined,
+          dryRun: opts.dryRun as boolean | undefined,
+        });
+      } catch (err) {
+        const { formatAndLogError } = await import('../core/format-error.js');
+        formatAndLogError(err, 'supervise');
+        process.exitCode = 1;
+      }
+    })();
+  });
+
+program
   .command('mcp-tools [name]')
   .description('List MCP tools exposed by the DanteForge server. Used by Claude Code / Codex / DanteCode.')
   .option('--json', 'Machine-readable JSON output')

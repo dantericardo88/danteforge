@@ -8,6 +8,7 @@ import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { runAutoforgeLoop, AutoforgeLoopState } from '../src/core/autoforge-loop.js';
 import type { AutoforgeLoopContext, AutoforgeLoopDeps } from '../src/core/autoforge-loop.js';
 import type { DanteState } from '../src/core/state.js';
@@ -67,7 +68,7 @@ function deps(cycleRef: { n: number }): Partial<AutoforgeLoopDeps> {
 
 describe('runAutoforgeLoop — emits durable wave receipts (depth_doctrine rung-8, CH-021 loop #2)', () => {
   it('a real autoforge cycle appends a COMPLETED autoforge wave with the canonical schema', async () => {
-    const cwd = path.join('X:\\tmp', `autoforge-wave-ledger-${process.pid}-${Date.now()}`);
+    const cwd = path.join(os.tmpdir(), `autoforge-wave-ledger-${process.pid}-${Date.now()}`);
     await fs.mkdir(cwd, { recursive: true });
     tempDirs.push(cwd);
     await runAutoforgeLoop(ctx(cwd), deps({ n: 0 }));

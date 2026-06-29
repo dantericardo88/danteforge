@@ -30,6 +30,7 @@ export { techDecide } from './tech-decide.js';
 export { lessons } from './lessons.js';
 export { design } from './design.js';
 export { autoforge } from './autoforge.js';
+export { supervise } from './supervise.js';
 export { awesomeScan } from './awesome-scan.js';
 export { browse } from './browse.js';
 export { harvest } from './harvest.js';

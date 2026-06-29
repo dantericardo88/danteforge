@@ -10,11 +10,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { toolchainEnv } from '../src/core/toolchain-path.js';
 import { mergeBackIsolatedBranch } from '../src/cli/commands/harden-crusade.js';
 
-const ROOT = path.join('X:\\tmp', `fleet-fixes-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `fleet-fixes-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 function git(cwd: string, ...args: string[]): string {
@@ -105,7 +106,7 @@ describe('mergeBackIsolatedBranch — isolated work lands WITHOUT touching the o
 describe('parallel push honesty — a court that never ran is NEVER a court rejection', () => {
   test('a promote crash yields courtRan:false (build failure, not rejection provenance)', async () => {
     const { runParallelRound } = await import('../src/core/ascend-frontier-parallel.js');
-    const r = await runParallelRound('X:\\tmp\\nowhere', [{ memberId: 'codex' as never, dimId: 'd1' }], {
+    const r = await runParallelRound(path.join(os.tmpdir(), 'nowhere'), [{ memberId: 'codex' as never, dimId: 'd1' }], {
       buildAll: async () => {},
       promoteOne: async () => { throw new Error('worktree exploded'); },
       _enqueueAudit: async () => {},

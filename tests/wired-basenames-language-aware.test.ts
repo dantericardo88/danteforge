@@ -6,9 +6,10 @@ import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { buildWiredBasenames } from '../src/matrix/engines/outcome-integrity.js';
 
-const R = path.join('X:\\tmp', `wired-basenames-${process.pid}`);
+const R = path.join(os.tmpdir(), `wired-basenames-${process.pid}`);
 
 before(async () => {
   const w = async (rel: string, content: string): Promise<void> => {

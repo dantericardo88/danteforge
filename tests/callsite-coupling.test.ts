@@ -2,10 +2,11 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { checkOutcomeIntegrity, integrityCapFor, buildWiredBasenames } from '../src/matrix/engines/outcome-integrity.js';
 
 // Real temp project on the X: drive (never C:/os.tmpdir for persistent artifacts).
-const ROOT = path.join('X:\\tmp', `coupling-test-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `coupling-test-${process.pid}`);
 
 before(async () => {
   await fs.mkdir(path.join(ROOT, 'tests'), { recursive: true });
@@ -51,7 +52,7 @@ describe('checkOutcomeIntegrity — callsite-coupling (CALLSITE_DECOUPLED)', () 
 });
 
 describe('checkOutcomeIntegrity — orphan / production-wiring (ORPHAN_CALLSITE)', () => {
-  const R = path.join('X:\\tmp', `orphan-test-${process.pid}`);
+  const R = path.join(os.tmpdir(), `orphan-test-${process.pid}`);
   before(async () => {
     await fs.mkdir(path.join(R, 'src', 'core'), { recursive: true });
     await fs.mkdir(path.join(R, 'src', 'cli'), { recursive: true });
@@ -94,10 +95,10 @@ describe('checkOutcomeIntegrity — orphan / production-wiring (ORPHAN_CALLSITE)
 // entrypoint through the static import graph (JS/TS only).
 
 describe('checkOutcomeIntegrity — orphan via import-graph reachability', () => {
-  const G1 = path.join('X:\\tmp', `orphan-graph1-${process.pid}`);
-  const G2 = path.join('X:\\tmp', `orphan-graph2-${process.pid}`);
-  const G3 = path.join('X:\\tmp', `orphan-graph3-${process.pid}`);
-  const G5 = path.join('X:\\tmp', `orphan-graph5-${process.pid}`);
+  const G1 = path.join(os.tmpdir(), `orphan-graph1-${process.pid}`);
+  const G2 = path.join(os.tmpdir(), `orphan-graph2-${process.pid}`);
+  const G3 = path.join(os.tmpdir(), `orphan-graph3-${process.pid}`);
+  const G5 = path.join(os.tmpdir(), `orphan-graph5-${process.pid}`);
   const w = async (root: string, rel: string, content: string): Promise<void> => {
     const p = path.join(root, rel);
     await fs.mkdir(path.dirname(p), { recursive: true });

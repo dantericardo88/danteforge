@@ -11,6 +11,7 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import {
   checkOutcomeIntegrity,
   commandHasSeams,
@@ -27,7 +28,7 @@ import { runOneOutcome } from '../src/matrix/engines/outcome-runner.js';
 import type { Outcome, OutcomeEvidenceEntry } from '../src/matrix/types/outcome.js';
 
 // Real temp project on the X: drive (never C:/os.tmpdir for persistent artifacts).
-const R = path.join('X:\\tmp', `polyglot-honesty-${process.pid}`);
+const R = path.join(os.tmpdir(), `polyglot-honesty-${process.pid}`);
 
 before(async () => {
   await fs.mkdir(path.join(R, 'tests'), { recursive: true });

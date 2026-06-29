@@ -9,10 +9,11 @@ import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { resolveProjectBrief, extractReadmeExcerpt } from '../src/matrix/engines/project-research-brief.js';
 import { makeUniversePacket, type UniverseTarget } from '../src/matrix/engines/council-universe-runner.js';
 
-const ROOT = path.join('X:\\tmp', `research-brief-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `research-brief-${process.pid}`);
 let n = 0;
 async function makeRepo(files: Record<string, string>): Promise<string> {
   const dir = path.join(ROOT, `repo-${n++}`);

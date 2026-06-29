@@ -8,9 +8,10 @@ import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { groundOutcomesCommand } from '../src/cli/commands/ground-outcomes.js';
 
-const R = path.join('X:\\tmp', `ground-outcomes-cmd-test-${process.pid}`);
+const R = path.join(os.tmpdir(), `ground-outcomes-cmd-test-${process.pid}`);
 let caseN = 0;
 
 before(async () => {

@@ -4,10 +4,11 @@ import { describe, test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { composeBuildGoal, recordCourtFeedback, loadCourtFeedback, parseCourtFeedback } from '../src/core/court-feedback.js';
 import type { FrontierSpec } from '../src/core/frontier-spec.js';
 
-const ROOT = path.join('X:\\tmp', `court-feedback-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `court-feedback-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 const SPEC = {

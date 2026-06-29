@@ -4,9 +4,10 @@ import { describe, test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { runTrustReport } from '../src/cli/commands/trust-report.js';
 
-const ROOT = path.join('X:\\tmp', `trust-report-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `trust-report-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 describe('trust-report — the score and its receipts, side by side', () => {

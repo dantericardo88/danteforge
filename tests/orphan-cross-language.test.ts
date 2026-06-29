@@ -2,11 +2,12 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { checkOrphanAudit, type CheckIO } from '../src/matrix/engines/hardener.js';
 import type { MatrixDimension } from '../src/core/compete-matrix.js';
 
 // Real temp projects on X: (never C:/os.tmpdir for persistent artifacts).
-const ROOT = path.join('X:\\tmp', `orphan-xlang-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `orphan-xlang-${process.pid}`);
 const RUST = path.join(ROOT, 'rust');
 const PY = path.join(ROOT, 'py');
 

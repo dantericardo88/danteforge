@@ -4,13 +4,14 @@ import { describe, test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import {
   parsePlanItems, parseAuditVerdict, planComplete, nextItems, refreshPlanItems,
   saveFrontierPlan, loadFrontierPlan, decomposeFrontierPlan, type FrontierPlan,
 } from '../src/core/frontier-plan.js';
 import type { FrontierSpec } from '../src/core/frontier-spec.js';
 
-const ROOT = path.join('X:\\tmp', `frontier-plan-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `frontier-plan-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 const GOOD_ITEMS = JSON.stringify([
@@ -156,9 +157,9 @@ describe('frontier-plan — the bar becomes a deterministic checklist, never an 
     const { makeLease } = await import('../src/cli/commands/council.js');
     const { buildCodexJudgePrompt } = await import('../src/matrix/adapters/codex-adapter.js');
     const prompt = 'Decompose this frozen bar into checklist items. Respond with ONLY a JSON array.';
-    const packet = await makePlanConsultPacket(prompt, 'X:\\tmp');
+    const packet = await makePlanConsultPacket(prompt, os.tmpdir());
     assert.equal((packet as unknown as { dimensionId: string }).dimensionId, 'council-consultation');
-    assert.equal(buildCodexJudgePrompt(packet, makeLease('X:\\tmp')), prompt,
+    assert.equal(buildCodexJudgePrompt(packet, makeLease(os.tmpdir())), prompt,
       'the decomposition prompt must pass through verbatim — no reviewer/VERDICT wrapper');
   });
 });

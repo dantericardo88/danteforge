@@ -2,6 +2,7 @@ import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import {
   runHardenCrusade,
   type HardenCrusadeOptions,
@@ -477,7 +478,7 @@ describe('runHardenCrusade — exhausted-dim economy (FIX B)', () => {
 
 // ── depth_doctrine: harden-crusade drives the shared WAVE LEDGER ────────────────
 describe('runHardenCrusade — emits durable wave receipts (depth_doctrine rung-8 proof)', () => {
-  const LEDGER_CWD = path.join('X:\\tmp', `hc-wave-ledger-${process.pid}`);
+  const LEDGER_CWD = path.join(os.tmpdir(), `hc-wave-ledger-${process.pid}`);
   after(async () => { await fs.rm(LEDGER_CWD, { recursive: true, force: true }).catch(() => {}); });
 
   it('a real harden-crusade cycle appends a COMPLETED wave receipt with the canonical schema', async () => {
@@ -509,7 +510,7 @@ describe('runHardenCrusade — emits durable wave receipts (depth_doctrine rung-
 // ── depth_doctrine: AUTO RE-ENTRY — resume from the last successful wave (CH-022) ──
 describe('runHardenCrusade — --resume continues from wave K, not 0 (depth_doctrine CH-022)', () => {
   it('with resume:true a crashed run continues from the planner index, NEVER restarting completed waves', async () => {
-    const cwd = path.join('X:\\tmp', `hc-resume-${process.pid}`);
+    const cwd = path.join(os.tmpdir(), `hc-resume-${process.pid}`);
     await fs.mkdir(cwd, { recursive: true });
     try {
       // Simulate a prior run of hc-security that completed waves 1 and 2, then crashed.
@@ -536,7 +537,7 @@ describe('runHardenCrusade — --resume continues from wave K, not 0 (depth_doct
   });
 
   it('WITHOUT resume the same ledger RESTARTS at wave 1 (default behavior preserved)', async () => {
-    const cwd = path.join('X:\\tmp', `hc-noresume-${process.pid}`);
+    const cwd = path.join(os.tmpdir(), `hc-noresume-${process.pid}`);
     await fs.mkdir(cwd, { recursive: true });
     try {
       const w1 = await startWave(cwd, { runId: 'hc-security', loopName: 'harden-crusade', waveIndex: 1, dimensionId: 'security', scoreBefore: 5 });

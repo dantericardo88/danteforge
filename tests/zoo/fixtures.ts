@@ -9,11 +9,12 @@ import { promisify } from 'node:util';
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 
 const execFileAsync = promisify(execFile);
 
 /** All zoo repos live here — X:\tmp by project convention (never C:), allowed by the saveMatrix guard. */
-export const ZOO_ROOT = path.join('X:\\tmp', `zoo-fleet-${process.pid}`);
+export const ZOO_ROOT = path.join(os.tmpdir(), `zoo-fleet-${process.pid}`);
 
 // ── git helpers ───────────────────────────────────────────────────────────────
 

@@ -7,12 +7,13 @@ import { describe, test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { applyDiffToMain } from '../src/matrix/engines/council-merge-court.js';
 
 const execFileAsync = promisify(execFile);
-const ROOT = path.join('X:\\tmp', `council-merge-rollback-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `council-merge-rollback-${process.pid}`);
 
 async function git(cwd: string, args: string[]): Promise<string> {
   const r = await execFileAsync('git', args, { cwd });

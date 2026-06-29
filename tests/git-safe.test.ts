@@ -2,12 +2,13 @@ import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { runGit, clearStaleIndexLock, MUTATING_GIT } from '../src/core/git-safe.js';
 
 const execFileAsync = promisify(execFile);
-const ROOT = path.join('X:\\tmp', `git-safe-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `git-safe-${process.pid}`);
 const LOCK = path.join(ROOT, '.git', 'index.lock');
 
 before(async () => {

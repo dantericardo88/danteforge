@@ -4,9 +4,10 @@ import { describe, test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { addChallenge, resolveChallenge, loadChallenges, renderLedger } from '../src/core/self-challenge.js';
 
-const ROOT = path.join('X:\\tmp', `self-challenge-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `self-challenge-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 describe('self-challenge — a defined problem is a solvable one', () => {

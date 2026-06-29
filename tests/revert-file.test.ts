@@ -6,12 +6,13 @@ import { describe, test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { defaultRevertFile } from '../src/matrix/adapters/revert-file.js';
 
 const execFileAsync = promisify(execFile);
-const ROOT = path.join('X:\\tmp', `revert-file-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `revert-file-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 async function makeGitRepo(): Promise<string> {

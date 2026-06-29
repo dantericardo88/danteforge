@@ -2,13 +2,14 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { runAscendFrontier, type PushResult } from '../src/cli/commands/ascend-frontier.js';
 import { parseCourtOutput } from '../src/cli/commands/ascend-frontier-runner.js';
 import { loadRunBundle, listRuns } from '../src/core/run-ledger.js';
 import { runFrontierAudit } from '../src/cli/commands/frontier-audit.js';
 import type { DimState } from '../src/core/ascend-frontier-engine.js';
 
-const ROOT = path.join('X:\\tmp', `ascend-ledger-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `ascend-ledger-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 function dim(over: Partial<DimState> = {}): DimState {

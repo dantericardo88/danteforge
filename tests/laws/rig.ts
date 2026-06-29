@@ -6,6 +6,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { execFileSync } from 'node:child_process';
 import type { GitFn } from '../../src/cli/commands/autoresearch-git.js';
 import type { CompeteMatrix, MatrixDimension } from '../../src/core/compete-matrix.js';
@@ -14,7 +15,7 @@ import { isTestSuiteCommand } from '../../src/matrix/engines/outcome-quality.js'
 // ── Temp roots (X:\tmp by convention — saveMatrix's scratch guard allows tmp segments) ──
 
 export function lawsTmpDir(name: string): string {
-  return path.join('X:\\tmp', `laws-${name}-${process.pid}-${Math.floor(Math.random() * 1e6)}`);
+  return path.join(os.tmpdir(), `laws-${name}-${process.pid}-${Math.floor(Math.random() * 1e6)}`);
 }
 
 export async function rmrf(dir: string): Promise<void> {

@@ -2,12 +2,13 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import {
   startWave, finishWave, readWaveLedger, reconcileReceipts, lastSuccessfulWave,
   type WaveReceipt,
 } from '../src/core/wave-ledger.js';
 
-const ROOT = path.join('X:\\tmp', `wave-ledger-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `wave-ledger-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 async function freshCwd(name: string): Promise<string> {

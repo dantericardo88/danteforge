@@ -2,12 +2,13 @@ import { test, describe, after } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { runAscendFrontier, setupCommands, buildTo7Commands, type PushResult } from '../src/cli/commands/ascend-frontier.js';
 import { phaseTimeoutMs } from '../src/cli/commands/ascend-frontier-runner.js';
 import type { DimState } from '../src/core/ascend-frontier-engine.js';
 import type { CompeteMatrix } from '../src/core/compete-matrix.js';
 
-const ROOT = path.join('X:\\tmp', `ascend-loop-${process.pid}`);
+const ROOT = path.join(os.tmpdir(), `ascend-loop-${process.pid}`);
 after(async () => { await fs.rm(ROOT, { recursive: true, force: true }).catch(() => {}); });
 
 function dim(over: Partial<DimState> = {}): DimState {
