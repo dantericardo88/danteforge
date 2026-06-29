@@ -169,6 +169,19 @@ async function runCycleScoringAndCompletion(
         return { tracker, scores, shouldBreak: false };
       }
     }
+    // MEASURED firewall (Depth Doctrine): soft completion is necessary but NOT sufficient. The loop may finish
+    // only with a fresh T5+ receipt proving the build runs. Without it, "done" is a hypothesis — withhold
+    // completion and continue (which routes to a depth/validate cycle that mints a real receipt).
+    if (deps._measuredGate) {
+      const measured = await deps._measuredGate(cwd).catch(() => null);
+      if (!measured || !measured.passed) {
+        logger.warn(`[Autoforge] Soft completion (${tracker.overall}%) reached but MEASURED gate FAILED: ${measured?.reason ?? 'gate error'} — NOT marking complete; routing to a depth/validate cycle.`);
+        ctx.state.auditLog.push(`${new Date().toISOString()} | autoforge-loop: completion WITHHELD — measured receipt gate failed (${measured?.reason ?? 'error'})`);
+        await _saveState(ctx.state, { cwd });
+        return { tracker, scores, shouldBreak: false };
+      }
+      logger.success(`[Autoforge] Measured gate PASSED: ${measured.reason}`);
+    }
     ctx.loopState = AutoforgeLoopState.COMPLETE;
     logger.success(`[Autoforge] Overall completion: ${tracker.overall}% — target reached!`);
     const guidance = buildGuidance(tracker, scores, ctx);

@@ -142,7 +142,13 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
   };
   const loopFn = options._runLoop ?? runAutoforgeLoop;
   const { executeAutoforgeCommand } = await import('../../core/autoforge-executor.js');
-  let finalCtx = await loopFn(ctx, { _executeCommand: options._executeCommand ?? executeAutoforgeCommand });
+  const { measuredReceiptGate } = await import('../../core/measured-completion-gate.js');
+  // MEASURED firewall wired in production: the loop may not declare COMPLETE without a fresh T5+ receipt.
+  const loopDeps = {
+    _executeCommand: options._executeCommand ?? executeAutoforgeCommand,
+    _measuredGate: (loopCwd: string) => measuredReceiptGate(loopCwd),
+  };
+  let finalCtx = await loopFn(ctx, loopDeps);
   if (finalCtx.loopState === AutoforgeLoopState.BLOCKED) { process.exitCode = 1; }
   else if (!options.skipCIP) {
     // CIP retry loop — Rule 14. Re-enters the loop up to 3 times feeding gap info back as goal.
@@ -163,7 +169,7 @@ async function runAutoMode(goal: string | undefined, cwd: string, options: {
         logger.warn(`[autoforge] CIP re-entry ${attempt}/${MAX_CIP_RETRIES} — focusing loop on evidence gaps`);
         const cipGoal = `Add E2E evidence for: ${blocked.map(r => r.dimensionId).join(', ')}`;
         const retryCtx = { ...finalCtx, goal: cipGoal, cycleCount: 0, loopState: AutoforgeLoopState.RUNNING };
-        finalCtx = await loopFn(retryCtx, { _executeCommand: options._executeCommand ?? executeAutoforgeCommand });
+        finalCtx = await loopFn(retryCtx, loopDeps);
         if (finalCtx.loopState === AutoforgeLoopState.BLOCKED) { process.exitCode = 1; break; }
       } catch (err) {
         logger.warn(`[autoforge] CIP sweep non-fatal error: ${String(err)}`);

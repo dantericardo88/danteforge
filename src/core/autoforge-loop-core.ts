@@ -153,6 +153,10 @@ export interface AutoforgeLoopDeps {
   _harshScore?: (opts: { cwd: string }) => Promise<{ displayScore: number } | null>;
   /** Minimum harsh score (0-10) required before the loop may exit on PDSE completion (default: 7.5). */
   harshExitThreshold?: number;
+  /** MEASURED completion firewall (Depth Doctrine): the loop may declare COMPLETE only if this passes — a fresh
+   *  T5+ outcome receipt proves the build actually runs. No soft score can satisfy it. Default in production:
+   *  measuredReceiptGate. When omitted, the gate is skipped (legacy/test behavior). */
+  _measuredGate?: (cwd: string) => Promise<{ passed: boolean; passingHighTier: number; reason: string }>;
   /** Injection seam: replaces createTimeMachineCommit for testing auto-capture. */
   _timeMachineCommit?: (opts: { cwd: string; paths: string[]; label: string }) => Promise<void>;
   /** Injection seam: replaces postWaveSanitize for testing wave-time LOC enforcement. */
