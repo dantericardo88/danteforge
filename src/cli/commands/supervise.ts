@@ -8,6 +8,8 @@
 // state, and surface pauses. `summarizeEngineRun` is exported and pure so the exit→summary mapping is tested.
 
 import { spawn } from 'node:child_process';
+import fsp from 'node:fs/promises';
+import path from 'node:path';
 import { logger } from '../../core/logger.js';
 import type { LoopRunSummary } from '../../core/autonomous-loop-runner.js';
 import type { Posture } from '../../core/loop-exit-classifier.js';
@@ -66,17 +68,51 @@ export function summarizeEngineRun(code: number | null, output: string): { summa
   return { summary, targetReached };
 }
 
-/** Spawn the engine once, tee its output to the console, and resolve {code, output}. Rejects on spawn error. */
-function spawnEngine(argv: string[], cwd: string): Promise<{ code: number | null; output: string }> {
+/** Default per-run wall-clock cap: a single inner-engine run may not exceed this. A hang past it is KILLED and
+ *  reported as a timeout (a classifiable transient) so an unattended campaign can never freeze on one bad run. */
+const DEFAULT_ENGINE_RUN_TIMEOUT_MS = 60 * 60_000;
+
+/** Spawn the engine once, tee its output to the console, and resolve {code, output}. Rejects on spawn error.
+ *  A run exceeding `timeoutMs` is killed and resolves with a synthetic timeout result (not a hang). */
+function spawnEngine(argv: string[], cwd: string, timeoutMs = DEFAULT_ENGINE_RUN_TIMEOUT_MS): Promise<{ code: number | null; output: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, [process.argv[1]!, ...argv], { cwd, env: process.env });
     let output = '';
+    let settled = false;
     const onData = (buf: Buffer) => { const s = buf.toString('utf8'); output += s; process.stdout.write(s); };
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      try { child.kill(); } catch { /* already gone */ }
+      logger.warn(`[supervise] engine run exceeded ${Math.round(timeoutMs / 60_000)}m — killed (will be retried as a transient).`);
+      resolve({ code: 124, output: `${output}\nengine timed out after ${timeoutMs}ms` });
+    }, timeoutMs);
     child.stdout?.on('data', onData);
     child.stderr?.on('data', onData);
-    child.on('error', reject);
-    child.on('close', (code) => resolve({ code, output }));
+    child.on('error', (err) => { if (settled) return; settled = true; clearTimeout(timer); reject(err); });
+    child.on('close', (code) => { if (settled) return; settled = true; clearTimeout(timer); resolve({ code, output }); });
   });
+}
+
+/** Cheap, no-LLM grounding proxy: how many outcome-evidence receipts currently PASS. The supervisor's circuit
+ *  breaker resets its stale counter only when this grows — i.e. only when the loop produced real measured
+ *  progress. Without this the breaker was dead (council finding: measureGrounding was never wired). */
+async function countPassingReceipts(cwd: string): Promise<number> {
+  try {
+    const dir = path.join(cwd, '.danteforge', 'outcome-evidence');
+    const files = await fsp.readdir(dir);
+    let passing = 0;
+    for (const f of files) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        const j = JSON.parse(await fsp.readFile(path.join(dir, f), 'utf8')) as { status?: string; passed?: boolean };
+        if (j.status === 'pass' || j.passed === true) passing++;
+      } catch { /* skip malformed receipt */ }
+    }
+    return passing;
+  } catch {
+    return 0;
+  }
 }
 
 export async function supervise(goalArg: string | undefined, options: SuperviseOptions = {}): Promise<void> {
@@ -128,6 +164,9 @@ export async function supervise(goalArg: string | undefined, options: SuperviseO
       return summary;
     },
     targetReached: async () => lastTargetReached,
+    // Measured progress proxy → makes the circuit breaker real: if passing receipts don't grow across
+    // restarts, the loop isn't making measured progress and the breaker escalates instead of burning forever.
+    measureGrounding: async () => countPassingReceipts(cwd),
     stopRequested: async () => (await loadSupervisorState(cwd))?.stopRequested === true,
     notify: async (n) => { await writeEscalation(cwd, n.level, n.reason); },
     log: (m) => logger.info(m),

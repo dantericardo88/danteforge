@@ -66,6 +66,17 @@ export function isPolicyStop(reason: string): boolean {
   return /policy|blocked_by_policy|gate (?:blocked|refused)|governance|confirm/i.test(reason);
 }
 
+/**
+ * A CONFIG block: the engine couldn't even start because no usable LLM provider is configured/available.
+ * Found by dogfooding — `danteforge doctor` reported "No verified live LLM provider" with no API key and
+ * Ollama not running. This is DETERMINISTIC: restarting cannot fix it, so the supervisor must pause for the
+ * operator immediately (in every posture) instead of burning restarts until the circuit breaker. Distinct
+ * from a provider OUTAGE (a temporary usage/auth wall that DOES reopen) handled by detectProviderOutage.
+ */
+export function isConfigBlock(reason: string): boolean {
+  return /no verified live (?:llm )?provider|no llm (?:provider|detected|available)|provider[^.]{0,40}not (?:available|configured)|configure a provider|not configured for forge|ollama[^.]{0,40}not (?:available|running)/i.test(reason);
+}
+
 /** Exponential backoff bounded by maxBackoffMs. */
 export function backoffFor(staleRestarts: number, cfg: ClassifyConfig): number {
   const base = cfg.baseBackoffMs ?? DEFAULTS.baseBackoffMs;
@@ -97,6 +108,12 @@ export function classifyLoopExit(exit: LoopExit, cfg: ClassifyConfig, nowMs: num
       return { kind: 'resume-at', reason: `provider outage — resume at named reset: ${outage.signature}`, resumeAtMs: outage.resumeAtMs, backoffMs };
     }
     return { kind: 'restart', reason: `provider outage (untimed) — default backoff: ${outage.signature}`, backoffMs };
+  }
+
+  // 2.5 Config block: no usable provider configured. Deterministic — restarting can't fix it. Pause for the
+  //     operator immediately in EVERY posture (afk included) rather than burning restarts to the breaker.
+  if (isConfigBlock(exit.finalReason) || isConfigBlock(exit.output ?? '')) {
+    return { kind: 'pause', reason: `config block — fix and re-run (no usable LLM provider): ${exit.finalReason}`, escalate: false };
   }
 
   // 3. Circuit breaker: too many restarts with zero grounding progress → stop burning, escalate to a

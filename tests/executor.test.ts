@@ -169,6 +169,23 @@ describe('executeWave — LLM injection path', () => {
     assert.strictEqual(result.success, false);
   });
 
+  it('best-of-N generates N VARIED candidate prompts, not identical clones (council fix)', async () => {
+    const tmpDir = await makeTmpStateDir();
+    process.chdir(tmpDir);
+
+    const prompts: string[] = [];
+    const result = await executeWave(1, 'balanced', false, false, false, 30000, {
+      _llmCaller: async (p: string) => { prompts.push(p); return 'Task complete: endpoint returns 200'; },
+      _verifier: async () => true,
+      bestOfN: 3,
+    });
+
+    assert.ok(prompts.length >= 3, `expected >=3 candidate generations, got ${prompts.length}`);
+    const firstThree = new Set(prompts.slice(0, 3));
+    assert.strictEqual(firstThree.size, 3, 'the 3 candidate prompts must be DISTINCT (variation, not clones)');
+    assert.strictEqual(result.mode, 'executed');
+  });
+
   it('captures failed forge lessons with the forge failure context', async () => {
     const tmpDir = await makeTmpStateDir();
     process.chdir(tmpDir);

@@ -259,21 +259,38 @@ async function executeForgeTask(task: WaveTask, index: number, totalTasks: numbe
       taskPrompt = await injectRelevantLessons(taskPrompt, 3, cwd ?? process.cwd());
     } catch { /* best-effort — never block forge */ }
     const onChunk = options?._onChunk;
-    const generateOne = (): Promise<string> => options?._llmCaller
-      ? options._llmCaller(taskPrompt)
-      : onChunk
-        ? callLLMWithProgress(taskPrompt, onChunk, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage })
-        : callLLM(taskPrompt, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage });
+    // Best-of-N candidates need genuine VARIATION or selection runs over near-duplicates (council finding).
+    // We can't thread temperature through every provider, so each candidate >0 gets a distinct approach
+    // directive appended — model-agnostic diversity that works even at temperature 0 / on subscription CLIs.
+    // Candidate 0 uses the bare prompt, so N=1 is byte-for-byte today's behavior.
+    const VARIANT_HINTS = [
+      '',
+      'Explore a DIFFERENT approach from the most obvious one — prefer the smallest, most surgical change that fully satisfies the task.',
+      'Explore a DIFFERENT approach — prioritize robustness and explicit edge-case handling.',
+      'Explore a DIFFERENT approach — prioritize clarity and reuse of existing functions over new code.',
+    ];
+    const promptFor = (variantIndex: number): string => {
+      const hint = VARIANT_HINTS[variantIndex % VARIANT_HINTS.length] ?? '';
+      return hint ? `${taskPrompt}\n\n[Best-of-N candidate ${variantIndex + 1}: ${hint} Do NOT converge on another candidate's solution.]` : taskPrompt;
+    };
+    const generateOne = (variantIndex: number): Promise<string> => {
+      const p = promptFor(variantIndex);
+      return options?._llmCaller
+        ? options._llmCaller(p)
+        : onChunk
+          ? callLLMWithProgress(p, onChunk, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage })
+          : callLLM(p, undefined, { enrichContext: true, cwd, onUsage: internalOnUsage });
+    };
 
-    // Best-of-N: generate N candidates and apply the one the Layer-1 pre-filter selects. N=1 (default) is a
-    // single generation — today's behavior exactly, no extra LLM calls.
+    // Best-of-N: generate N varied candidates and apply the one the Layer-1 pre-filter selects. N=1 (default)
+    // is a single bare-prompt generation — today's behavior exactly, no extra LLM calls.
     const n = Math.max(1, options?.bestOfN ?? 1);
     let result: string;
     if (n === 1) {
-      result = await generateOne();
+      result = await generateOne(0);
     } else {
       const candidates: string[] = [];
-      for (let c = 0; c < n; c++) candidates.push(await generateOne());
+      for (let c = 0; c < n; c++) candidates.push(await generateOne(c));
       if (options?._selectForge) {
         const selection = await options._selectForge(candidates);
         result = selection.chosen?.result ?? candidates[0]!;

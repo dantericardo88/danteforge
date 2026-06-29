@@ -1,7 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  classifyLoopExit, backoffFor, isBudgetStop, isPolicyStop,
+  classifyLoopExit, backoffFor, isBudgetStop, isPolicyStop, isConfigBlock,
   type LoopExit, type ClassifyConfig,
 } from '../src/core/loop-exit-classifier.js';
 import { runSupervisor, type SupervisorDeps, type SupervisorConfig } from '../src/core/loop-supervisor.js';
@@ -94,6 +94,24 @@ describe('loop-exit-classifier — the tiered auto-reengage brain', () => {
     assert.ok(!isBudgetStop('quorum not met'));
     assert.ok(isPolicyStop('gate blocked'));
     assert.ok(!isPolicyStop('done'));
+  });
+
+  test('config block (no provider) → pause immediately, do NOT retry as transient (dogfood fix)', () => {
+    const reason = 'No verified live LLM provider is configured for forge execution. Re-run with --prompt or configure a provider.';
+    // First run, no stale restarts — must still pause, not restart.
+    const a = classifyLoopExit(exit({ status: 'paused', finalReason: reason, staleRestarts: 0 }), tiered, NOW);
+    assert.equal(a.kind, 'pause');
+    if (a.kind === 'pause') assert.equal(a.escalate, false);
+    // afk posture must ALSO pause — restarting can't conjure a provider.
+    assert.equal(classifyLoopExit(exit({ finalReason: reason }), { posture: 'afk' }, NOW).kind, 'pause');
+  });
+
+  test('isConfigBlock matchers (provider missing vs ordinary failure)', () => {
+    assert.ok(isConfigBlock('No verified live LLM provider is available'));
+    assert.ok(isConfigBlock('Ollama model "llama3" is not available from the configured endpoint'));
+    assert.ok(isConfigBlock('configure a provider with working model access'));
+    assert.ok(!isConfigBlock('quorum not met'));
+    assert.ok(!isConfigBlock('max cycles reached (20)'));
   });
 });
 
