@@ -26,4 +26,32 @@ describe('council-review command — verdict + ledger recording (injected review
     assert.equal(recordCalls, 0);
     process.exitCode = prevExit;
   });
+
+  test('--loop runs review→fix→re-review until the council clears it', async () => {
+    const prevExit = process.exitCode;
+    let round = 0;
+    const fixedRounds: number[] = [];
+    await councilReview({
+      json: true, loop: true, rounds: 5,
+      _review: async (l) => (round >= 1
+        ? { lens: l.id, satisfied: true, gaps: [] }
+        : { lens: l.id, satisfied: false, gaps: [{ lens: l.id, title: 'g', problem: 'p', evidence: 'e', opportunity: 'o', blocking: true }] }),
+      _fix: async (_g, r) => { fixedRounds.push(r); round++; },
+      _recordGap: async () => 'CH-1',
+    });
+    assert.deepEqual(fixedRounds, [1], 'fixer ran once; round 2 was READY');
+    process.exitCode = prevExit;
+  });
+
+  test('--loop exits non-zero when it cannot clear within --rounds', async () => {
+    const prevExit = process.exitCode;
+    await councilReview({
+      json: true, loop: true, rounds: 2,
+      _review: async (l) => ({ lens: l.id, satisfied: false, gaps: [{ lens: l.id, title: 'g', problem: 'p', evidence: 'e', opportunity: 'o', blocking: true }] }),
+      _fix: async () => {},
+      _recordGap: async () => 'CH-1',
+    });
+    assert.equal(process.exitCode, 2);
+    process.exitCode = prevExit;
+  });
 });

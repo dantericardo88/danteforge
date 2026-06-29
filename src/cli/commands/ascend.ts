@@ -28,6 +28,9 @@ export interface AscendOptions {
   autoHarvest?: boolean;
   /** Set false to skip mid-loop verify pass (--no-verify-loop) */
   verifyLoop?: boolean;
+  /** After the run, convene the adversarial council readiness gate (multi-lens gap-hunt → READY/NOT_READY,
+   *  blocking gaps recorded to the ledger). Makes the frontier loop end with builder-never-judges scrutiny. */
+  councilGate?: boolean;
   /**
    * Execution mode: 'advisory' (default) writes guidance only; 'forge' calls
    * `danteforge forge "<goal>"` directly for each dimension, bypassing tasks/PLAN.md.
@@ -88,6 +91,15 @@ export async function ascend(options: AscendOptions = {}): Promise<AscendResult>
       const { postWaveSanitize } = await import('../../core/auto-sanitize.js');
       await postWaveSanitize({ cwd });
     } catch { /* best-effort */ }
+  }
+  // Council readiness gate (opt-in): end the frontier run with an adversarial multi-lens gap-hunt rather than
+  // a score alone. Records blocking gaps to the ledger; never blocks the return value.
+  if (options.councilGate) {
+    logger.info('[ascend] Convening the council readiness gate…');
+    try {
+      const { councilReview } = await import('./council-review.js');
+      await councilReview({ cwd });
+    } catch (e) { logger.warn(`[ascend] council gate error (non-fatal): ${e instanceof Error ? e.message : String(e)}`); }
   }
   return _dnResult ?? { cyclesRun: 0, dimensionsImproved: 0, dimensionsAtTarget: 0, ceilingReports: [], finalScore: 0, success: false };
 }

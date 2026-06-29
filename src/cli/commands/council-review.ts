@@ -16,10 +16,16 @@ import {
 export interface CouncilReviewOptions {
   cwd?: string;
   json?: boolean;
+  /** Continuous mode: review → record gaps → fix → re-review, until READY or --rounds. */
+  loop?: boolean;
+  /** Max review→fix rounds in --loop mode (default 5). */
+  rounds?: number;
   /** Injection seam: replaces the per-lens LLM reviewer (tests / alternative dispatch). */
   _review?: (lens: CouncilLens) => Promise<LensReview>;
   /** Injection seam: replaces the ledger sink. */
   _recordGap?: (gap: CouncilGap) => Promise<string | null>;
+  /** Injection seam: replaces the --loop fixer (tests / alternative driver). */
+  _fix?: (gaps: CouncilGap[], round: number) => Promise<void>;
 }
 
 /** Pull the first JSON object out of an LLM response (handles ```json fences and surrounding prose). */
@@ -64,9 +70,42 @@ function llmLensReviewer(cwd: string): (lens: CouncilLens) => Promise<LensReview
   };
 }
 
+/** The --loop fixer: spawn `danteforge autoforge --auto` with the blocking gaps as the goal, so each round
+ *  actually attempts the fixes the council named. Provider-dependent (autoforge needs an LLM); the spawn itself
+ *  is real and bounded by autoforge's own loop controls. */
+function autoforgeFixer(cwd: string): (gaps: CouncilGap[], round: number) => Promise<void> {
+  return async (gaps, round) => {
+    const { spawn } = await import('node:child_process');
+    const goal = `Address council-found gaps (round ${round}): ${gaps.map((g) => g.title).slice(0, 6).join('; ')}`;
+    await new Promise<void>((resolve) => {
+      const child = spawn(process.execPath, [process.argv[1]!, 'autoforge', goal, '--auto'], { cwd, env: process.env });
+      child.stdout?.on('data', (b: Buffer) => process.stdout.write(b));
+      child.stderr?.on('data', (b: Buffer) => process.stdout.write(b));
+      child.on('error', () => resolve());
+      child.on('close', () => resolve());
+    });
+  };
+}
+
 export async function councilReview(options: CouncilReviewOptions = {}): Promise<void> {
   const cwd = options.cwd ?? process.cwd();
   const review = options._review ?? llmLensReviewer(cwd);
+
+  // ── Continuous mode: the codified "loop until the council says READY" ──────────
+  if (options.loop) {
+    const { runCouncilGapLoop } = await import('../../core/council-gap-loop.js');
+    const res = await runCouncilGapLoop(
+      { review, fix: options._fix ?? autoforgeFixer(cwd), recordGap: options._recordGap, log: (m) => logger.info(m) },
+      { maxRounds: options.rounds ?? 5, cwd },
+    );
+    if (options.json) { logger.info(JSON.stringify({ cleared: res.cleared, rounds: res.rounds, verdict: res.finalVerdict.verdict, recorded: res.recordedGapIds }, null, 2)); }
+    else {
+      logger.info(`\n  Council loop: ${res.cleared ? '🟢 READY' : '🔴 NOT cleared'} after ${res.rounds} round(s).`);
+      if (!res.cleared) logger.info(`  ${res.finalVerdict.blockingGaps.length} blocking gap(s) remain — tracked in the ledger (${res.recordedGapIds.join(', ') || 'none new'}).`);
+    }
+    if (!res.cleared) process.exitCode = 2;
+    return;
+  }
   const verdict = await runCouncilGapReview({ review, log: (m) => logger.verbose(m) }, {});
 
   // Record every blocking gap in the ledger (deduped) — a defined problem is owned, never lost.

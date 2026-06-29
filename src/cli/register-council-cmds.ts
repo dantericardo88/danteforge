@@ -21,11 +21,22 @@ program
   .command('council-review')
   .description('Adversarial multi-lens gap-hunt — READY/NOT_READY verdict + defined gaps recorded to the ledger (builder-never-judges)')
   .option('--json', 'Machine-readable JSON output')
+  .option('--loop', 'Continuous mode: review → record gaps → fix → re-review, until READY or --rounds')
+  .option('--rounds <n>', 'Max review→fix rounds in --loop mode (default 5)')
+  .addHelpText('after', `
+Examples:
+  danteforge council-review                One-shot gap-hunt; records blocking gaps to the ledger
+  danteforge council-review --loop         Loop review→fix→re-review until the council says READY
+  danteforge council-review --loop --rounds 3   Cap the loop at 3 rounds`)
   .action((opts: Record<string, unknown>) => {
     void (async () => {
       try {
         const { councilReview } = await import('./commands/council-review.js');
-        await councilReview({ json: opts['json'] as boolean | undefined });
+        await councilReview({
+          json: opts['json'] as boolean | undefined,
+          loop: opts['loop'] as boolean | undefined,
+          rounds: opts['rounds'] !== undefined ? parseInt(opts['rounds'] as string, 10) : undefined,
+        });
       } catch (err) {
         const { formatAndLogError } = await import('../core/format-error.js');
         formatAndLogError(err, 'council-review');
