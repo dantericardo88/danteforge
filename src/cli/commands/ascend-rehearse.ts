@@ -13,6 +13,7 @@
 
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { logger } from '../../core/logger.js';
 import { loadCeilingReceipt } from '../../core/ceiling-receipt.js';
 import { loadAttemptLedger } from '../../core/evidence-novelty.js';
@@ -102,7 +103,7 @@ async function writeMatrix(cwd: string, m: unknown): Promise<void> {
 }
 
 export async function runAscendRehearsal(options: RehearseOptions = {}): Promise<RehearsalReport> {
-  const root = options._scratchRoot ?? path.join('X:\\tmp');
+  const root = options._scratchRoot ?? os.tmpdir();
   const cwd = path.join(root, `danteforge-rehearse-${process.pid}-${Math.floor(performance.now() * 1000) % 1_000_000}`);
   await fs.mkdir(path.join(cwd, '.danteforge', 'compete'), { recursive: true });
 

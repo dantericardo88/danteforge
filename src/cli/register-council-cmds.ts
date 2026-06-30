@@ -152,7 +152,7 @@ program
   .option('--researchers <ids>', 'Comma-separated researcher members (default: claude-code,codex,grok-build)')
   .option('--verifier <id>', 'Checklist verifier — binary pass/fail per item (default: grok-build)', 'grok-build')
   .option('--confirmer <id>', 'Final verdict confirmer (default: codex)', 'codex')
-  .option('--oss-harvest-path <path>', 'Path to OSS harvest directory (default: X:\\Projects\\OSSHarvest)')
+  .option('--oss-harvest-path <path>', 'Path to OSS harvest directory (default: ../OSSHarvest sibling, or $DANTEFORGE_OSS_HARVEST_PATH)')
   .option('--skip-research', 'Skip research phase — use existing forge briefs only')
   .option('--skip-validate', 'Skip post-merge validate (faster, no receipts)')
   .option('--min-gap <n>', 'Minimum gap to include (default: 0)', '0')

@@ -82,8 +82,10 @@ async function loadSweBenchInstances(cwd: string, count: number) {
   return (data.instances ?? []).slice(0, count);
 }
 
-// Path to the dedicated swe-bench-runner package (lives in the DanteCode monorepo).
-const SWE_BENCH_RUNNER = path.join('X:\\Projects\\DanteCode\\packages\\swe-bench-runner\\dist\\index.js');
+// Path to the dedicated swe-bench-runner package (lives in the DanteCode monorepo, a sibling of this repo).
+// Portable: env override, else resolve DanteCode as a sibling of the current project (never a hardcoded drive).
+const SWE_BENCH_RUNNER = process.env['DANTEFORGE_SWE_BENCH_RUNNER']
+  ?? path.resolve(process.cwd(), '..', 'DanteCode', 'packages', 'swe-bench-runner', 'dist', 'index.js');
 
 async function resolveSweBenchRunner(): Promise<string | null> {
   try {

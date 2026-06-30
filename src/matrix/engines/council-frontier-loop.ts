@@ -405,7 +405,8 @@ export async function runFrontierLoop(
     researchers = ['codex', 'grok-build'],
     verifier = 'grok-build',
     confirmer = 'codex',
-    ossHarvestPath = 'X:\\Projects\\OSSHarvest',
+    // Portable default: OSSHarvest as a sibling of the current project, never a hardcoded drive.
+    ossHarvestPath = path.join(path.dirname(process.cwd()), 'OSSHarvest'),
     skipResearch = false,
     skipValidate = false,
     minGap = 0,

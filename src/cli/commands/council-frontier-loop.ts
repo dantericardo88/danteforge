@@ -63,7 +63,7 @@ export async function runFrontierLoopCommand(opts: FrontierLoopCLIOptions): Prom
     researchers: opts.researchers ? parseMemberIds(opts.researchers, '--researchers') : undefined,
     verifier: opts.verifier ? parseMemberId(opts.verifier, '--verifier') : 'grok-build',
     confirmer: opts.confirmer ? parseMemberId(opts.confirmer, '--confirmer') : 'codex',
-    ossHarvestPath: opts.ossHarvestPath ?? process.env['DANTEFORGE_OSS_HARVEST_PATH'] ?? 'X:\\Projects\\OSSHarvest',
+    ossHarvestPath: opts.ossHarvestPath ?? process.env['DANTEFORGE_OSS_HARVEST_PATH'], // undefined → engine's portable sibling default
     skipResearch: opts.skipResearch ?? false,
     skipValidate: opts.skipValidate ?? false,
     minGap: opts.minGap ?? 0,
