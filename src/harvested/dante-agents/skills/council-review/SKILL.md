@@ -39,6 +39,9 @@ danteforge council-review --json
    (title + observable problem + evidence + the opportunity solving it unlocks), not to praise.
 2. **Builder-never-judges.** The reviewer is never the agent that built the work — the rule that kills score
    inflation (same principle as Ornith's frozen-judge veto and COMPILOT's "never let the model judge itself").
+   **Hard prerequisite:** certifying READY requires a `--reviewer <provider>` that is DISTINCT from the builder
+   provider. With only one provider configured, the panel cannot be independent, so it returns NOT_READY with an
+   explicit "independence gap" (this is by design, not a silent failure — configure a second provider to clear it).
 3. **Fail-closed.** A reviewer that errors or abstains counts as a blocking gap — the panel is never
    "ready by silence". With no LLM provider configured it returns NOT_READY honestly.
 4. **Verdict + ledger.** Aggregates to `READY` / `NOT_READY`. Every blocking gap is recorded in the

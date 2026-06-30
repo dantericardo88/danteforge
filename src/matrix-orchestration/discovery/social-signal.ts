@@ -104,6 +104,8 @@ export async function captureSocialSignal(
           const hnFetch = options._hnSearch ??
             ((q: string) => fetch(
               'https://hn.algolia.com/api/v1/search?query=' + encodeURIComponent(q) + '&tags=story&hitsPerPage=10',
+              // Bounded: never let a hung corporate proxy stall the orchestration phase indefinitely.
+              { signal: AbortSignal.timeout(10_000) },
             ).then(r => r.json()));
           const raw = await hnFetch(competitorName) as { hits?: HnHit[] };
           hits = raw.hits ?? [];

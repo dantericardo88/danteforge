@@ -1,7 +1,7 @@
 # DanteForge
 
-[![npm version](https://img.shields.io/badge/npm-0.17.0-blue)](https://www.npmjs.com/package/danteforge)
-[![CI](https://github.com/your-org/danteforge/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/danteforge/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/badge/npm-0.18.1-blue)](https://www.npmjs.com/package/danteforge)
+[![CI](https://github.com/dantericardo88/danteforge/actions/workflows/ci.yml/badge.svg)](https://github.com/dantericardo88/danteforge/actions/workflows/ci.yml)
 [![license](https://img.shields.io/badge/license-MIT-green)](LICENSE)
 [![node](https://img.shields.io/badge/node-%3E%3D18-brightgreen)](package.json)
 

@@ -126,7 +126,9 @@ async function runSweBench(cwd: string, instances: number, timeoutPerTask: numbe
   const runnerPath = await resolveSweBenchRunner();
   if (!runnerPath) {
     logger.warn('[benchmark] swe-bench-runner not built.');
-    logger.warn('[benchmark] To enable SWE-bench: cd X:\\Projects\\DanteCode\\packages\\swe-bench-runner && npm ci && npm run build');
+    logger.warn('[benchmark] To enable SWE-bench: build the swe-bench-runner in the sibling DanteCode repo');
+    logger.warn('[benchmark]   (../DanteCode/packages/swe-bench-runner: npm ci && npm run build), or set');
+    logger.warn('[benchmark]   DANTEFORGE_SWE_BENCH_RUNNER to its built dist/index.js path.');
     logger.warn('[benchmark] Then re-run: danteforge benchmark --suite swe-bench');
     return buildExternalReport('swe-bench', []);
   }
