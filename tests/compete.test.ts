@@ -214,7 +214,7 @@ describe('compete command', () => {
     await saveMatrix(matrix, tmpDir);
 
     const result = await compete({
-      rescore: 'ux_polish=7.5',
+      rescore: 'ux_polish=6.5',
       skipVerify: true,
       cwd: tmpDir,
       _loadMatrix: async () => matrix,
@@ -224,10 +224,10 @@ describe('compete command', () => {
     const final = await loadMatrix(tmpDir);
     assert.ok(final !== null);
     const dim = final!.dimensions[0]!;
-    assert.strictEqual(dim.scores['self'], 7.5);
+    assert.strictEqual(dim.scores['self'], 6.5);
     assert.strictEqual(dim.sprint_history.length, 1);
     assert.strictEqual(dim.sprint_history[0]!.before, 4.5);
-    assert.strictEqual(dim.sprint_history[0]!.after, 7.5);
+    assert.strictEqual(dim.sprint_history[0]!.after, 6.5);
     assert.strictEqual(dim.sprint_history[0]!.commit, undefined);
   });
 
@@ -239,7 +239,7 @@ describe('compete command', () => {
     await saveMatrix(matrix, tmpDir);
 
     await compete({
-      rescore: 'testing=7.8,abc123def456',
+      rescore: 'testing=6.8,abc123def456',
       skipVerify: true,
       cwd: tmpDir,
       _loadMatrix: async () => matrix,
@@ -248,7 +248,7 @@ describe('compete command', () => {
     const final = await loadMatrix(tmpDir);
     assert.ok(final !== null);
     const sprint = final!.dimensions[0]!.sprint_history[0]!;
-    assert.strictEqual(sprint.after, 7.8);
+    assert.strictEqual(sprint.after, 6.8);
     assert.strictEqual(sprint.commit, 'abc123def456');
   });
 
@@ -354,7 +354,7 @@ describe('compete command', () => {
     let savedMatrix: CompeteMatrix | null = null;
 
     const result = await compete({
-      rescore: 'ux_polish=7.5',
+      rescore: 'ux_polish=6.5',
       cwd: tmpDir,
       _loadMatrix: async () => matrix,
       _saveMatrix: async (m: CompeteMatrix) => { savedMatrix = m; },
@@ -379,7 +379,7 @@ describe('compete command', () => {
     };
 
     const result = await compete({
-      rescore: 'ux_polish=7.5',
+      rescore: 'ux_polish=6.5',
       cwd: tmpDir,
       _loadMatrix: async () => matrix,
       _saveMatrix: async (m: CompeteMatrix) => { savedMatrix = m; },
@@ -405,7 +405,7 @@ describe('compete command', () => {
     };
 
     const result = await compete({
-      rescore: 'ux_polish=7.5',
+      rescore: 'ux_polish=6.5',
       cwd: tmpDir,
       _loadMatrix: async () => matrix,
       _readVerifyReceipt: async () => passReceipt as VerifyReceipt,
@@ -415,12 +415,12 @@ describe('compete command', () => {
     assert.strictEqual(result.action, 'rescore');
     const final = await loadMatrix(tmpDir);
     assert.ok(final !== null, 'Matrix should be on disk after merge');
-    assert.strictEqual(final!.dimensions[0]!.scores['self'], 7.5);
+    assert.strictEqual(final!.dimensions[0]!.scores['self'], 6.5);
     assert.ok(writtenEvidence !== null, 'Evidence record should be written');
     assert.strictEqual((writtenEvidence as CompeteEvidence).verifyStatus, 'pass');
     assert.strictEqual((writtenEvidence as CompeteEvidence).scoreBefore, 4.5);
-    assert.strictEqual((writtenEvidence as CompeteEvidence).scoreAfter, 7.5);
-    assert.strictEqual((writtenEvidence as CompeteEvidence).delta, 3.0);
+    assert.strictEqual((writtenEvidence as CompeteEvidence).scoreAfter, 6.5);
+    assert.strictEqual((writtenEvidence as CompeteEvidence).delta, 2.0);
   });
 
   // T15: --rescore --skip-verify bypasses gate even with no receipt
@@ -433,7 +433,7 @@ describe('compete command', () => {
     let writtenEvidence: CompeteEvidence | null = null;
 
     const result = await compete({
-      rescore: 'ux_polish=7.5',
+      rescore: 'ux_polish=6.5',
       skipVerify: true,
       cwd: tmpDir,
       _loadMatrix: async () => matrix,
@@ -444,7 +444,7 @@ describe('compete command', () => {
     assert.strictEqual(result.action, 'rescore');
     const final = await loadMatrix(tmpDir);
     assert.ok(final !== null, 'Matrix should be on disk with --skip-verify');
-    assert.strictEqual(final!.dimensions[0]!.scores['self'], 7.5);
+    assert.strictEqual(final!.dimensions[0]!.scores['self'], 6.5);
     assert.ok(writtenEvidence !== null, 'Evidence record should still be written');
     assert.strictEqual((writtenEvidence as CompeteEvidence).verifyStatus, 'skipped');
   });
@@ -759,11 +759,12 @@ describe('compete --auto (actionAutoSprint)', () => {
 
   it('loop stops early when all gaps closed before maxCycles', async () => {
     const lines: string[] = [];
-    // Single dimension — victory score closes it after cycle 1
+    // Single dimension — the post-sprint score is clamped to the no-receipt 7.0 ceiling on write, so the
+    // competitor must be UNDER 7.0 for the clamped self-score to actually CLOSE the gap and stop the loop.
     await actionAutoSprint({
       cwd: tmpDir2,
       maxCycles: 5,
-      _loadMatrix: async () => makeAutoMatrix(5.0, 8.0),
+      _loadMatrix: async () => makeAutoMatrix(5.0, 6.0),
       _saveMatrix: async () => {},
       _runInferno: async () => {},
       _postSprintScore: async () => makeScoreResult(9.0), // 9.0 >= 8.0 → gap closed
@@ -790,9 +791,11 @@ describe('compete --sync-scores', () => {
   }
 
   it('syncs drifted matrix self-scores from live harsh scorer', async () => {
+    // Scores kept UNDER the no-receipt 7.0 ceiling so the drift-SYNC mechanic is observable: a synced value
+    // above 7.0 would be clamped (Depth Doctrine), making the sync a no-op and masking the drift behavior.
     const matrix = makeMatrix([
-      { id: 'ux_polish', label: 'UX Polish', scores: { self: 7.0, cursor: 9.0 }, gap_to_leader: 2.0 },
-      { id: 'testing', label: 'Testing', scores: { self: 8.0, cursor: 9.0 }, gap_to_leader: 1.0 },
+      { id: 'ux_polish', label: 'UX Polish', scores: { self: 4.0, cursor: 9.0 }, gap_to_leader: 2.0 },
+      { id: 'testing', label: 'Testing', scores: { self: 6.0, cursor: 9.0 }, gap_to_leader: 1.0 },
     ]);
     await saveMatrix(matrix, tmpDir3);
 
@@ -800,8 +803,8 @@ describe('compete --sync-scores', () => {
       syncScores: true,
       cwd: tmpDir3,
       _loadMatrix: async () => JSON.parse(JSON.stringify(matrix)) as CompeteMatrix,
-      // Live scorer returns uxPolish=9.5 (delta 2.5, drifted), testing=8.1 (delta 0.1, within threshold)
-      _harshScore: async () => makeHarshResult({ uxPolish: 9.5, testing: 8.1 }),
+      // Live scorer: uxPolish=6.5 (delta 2.5, drifted → sync), testing=6.1 (delta 0.1, within threshold → skip)
+      _harshScore: async () => makeHarshResult({ uxPolish: 6.5, testing: 6.1 }),
     });
 
     assert.strictEqual(result.action, 'validate');
@@ -810,7 +813,7 @@ describe('compete --sync-scores', () => {
     const final = await loadMatrix(tmpDir3);
     const uxDim = final?.dimensions.find(d => d.id === 'ux_polish');
     assert.ok(uxDim, 'ux_polish dimension should exist');
-    assert.strictEqual(uxDim!.scores['self'], 9.5, 'ux_polish self should be updated to live score');
+    assert.strictEqual(uxDim!.scores['self'], 6.5, 'ux_polish self should be updated to live score');
   });
 
   it('does nothing when all scores within 0.2 threshold', async () => {
