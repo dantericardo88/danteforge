@@ -167,12 +167,14 @@ describe('Flywheel Integration — captureSuccessLessons with real git', () => {
     git(tmpDir, ['add', 'first.ts']);
     git(tmpDir, ['commit', '-m', 'feat: first export']);
 
-    // Second change + capture
+    // Second change + capture — STAGE it first (like the first capture) so the deterministic capturer sees the
+    // new exported symbol in the staged diff; an untracked file yields no new lesson.
     await fs.writeFile(
       path.join(tmpDir, 'second.ts'),
       'export function secondExport(): number { return 42; }\n',
       'utf8',
     );
+    git(tmpDir, ['add', 'second.ts']);
     const r2 = await captureSuccessLessons(makeReceipt('pass'), tmpDir, {
       _isLLMAvailable: async () => false,
     });
