@@ -68,28 +68,34 @@ describe('captureSocialSignal — disabled by default', () => {
   });
 });
 
-describe('captureSocialSignal — enabled flag plumbing', () => {
-  it('still returns an empty report when opted-in (v1.1 backends not wired)', async () => {
+describe('captureSocialSignal — enabled flag plumbing (v1.1 wired)', () => {
+  it('when opted-in, fetches via the injected HN seam and records sourcesRequested (NO live network)', async () => {
     const cwd = await tmp();
+    let hnCalls = 0;
     const report = await captureSocialSignal(makeUniverse(), {
       cwd, enabled: true,
       sources: ['hackernews', 'reddit'],
       _now: () => '2026-05-12T00:00:00.000Z',
+      // Inject the seam → deterministic, no live HN Algolia call.
+      _hnSearch: async () => { hnCalls++; return { hits: [{ title: 'AutoGen is great', url: 'http://example/1' }] }; },
     });
     assert.equal(report.enabled, true);
-    assert.equal(report.mentions.length, 0);
-    assert.ok(report.skippedReason?.includes('v1.1'));
+    assert.equal(hnCalls, 1, 'the HN seam was used (no live fetch)');
+    assert.equal(report.mentions.length, 1, 'mentions captured from the seam');
+    assert.equal(report.mentions[0]!.competitorName, 'AutoGen');
     const audit = await readAuditLog(cwd);
     const last = audit[audit.length - 1];
     assert.ok(last);
-    const payload = last.payload as { sourcesRequested?: string[] };
+    const payload = last.payload as { sourcesRequested?: string[]; mentionsCollected?: number };
     assert.deepEqual(payload.sourcesRequested, ['hackernews', 'reddit']);
+    assert.equal(payload.mentionsCollected, 1);
   });
 
   it('defaults sources to ["hackernews"] when enabled without explicit sources', async () => {
     const cwd = await tmp();
     await captureSocialSignal(makeUniverse(), {
       cwd, enabled: true, _now: () => '2026-05-12T00:00:00.000Z',
+      _hnSearch: async () => ({ hits: [] }), // injected → no live network
     });
     const audit = await readAuditLog(cwd);
     const last = audit[audit.length - 1];

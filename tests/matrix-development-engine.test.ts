@@ -122,8 +122,11 @@ describe('MatrixDevelopmentEngine', () => {
     await fs.writeFile(matrixPath, JSON.stringify(matrix, null, 2));
     const createCommit = fakeTimeMachine();
 
-    await writeScoreProposal({ cwd, dimension: 1, score: 9, agent: 'optimist', rationale: 'optimistic' });
-    await writeScoreProposal({ cwd, dimension: 1, score: 7.2, agent: 'harsh', rationale: 'harsh recheck' });
+    // Proposals kept UNDER the no-receipt 7.0 ceiling (Depth Doctrine caps a dim with no capability_test
+    // receipt at 7.0) so this test exercises the harsh-min MERGE mechanic, not the orthogonal clamp — at/above
+    // 7.0 both proposals would collapse to 7.0 and the policy choice would be unobservable.
+    await writeScoreProposal({ cwd, dimension: 1, score: 6.8, agent: 'optimist', rationale: 'optimistic' });
+    await writeScoreProposal({ cwd, dimension: 1, score: 6.4, agent: 'harsh', rationale: 'harsh recheck' });
     const receipt = await mergeScoreProposals({
       cwd,
       policy: 'harsh-min',
@@ -132,7 +135,7 @@ describe('MatrixDevelopmentEngine', () => {
     });
 
     const updated = await readJson<any>(matrixPath);
-    assert.equal(updated.dimensions[0].scores.self, 7.2);
+    assert.equal(updated.dimensions[0].scores.self, 6.4);
     assert.equal(updated.dimensions[0].sprint_history[0].mergeReceipt, receipt.receiptPath);
     assert.equal(receipt.merged.length, 1);
     assert.equal(receipt.rejected.length, 1);

@@ -24,7 +24,7 @@ export interface CheckTasteGateOptions {
 export function checkTasteGate(options: CheckTasteGateOptions): TasteGateRequest {
   const { lease, workPacket, agentRunResult } = options;
   const now = options._now ?? (() => new Date().toISOString());
-  const affectedSurfaces = detectAffectedSurfaces(agentRunResult.filesChanged);
+  const affectedSurfaces = detectAffectedSurfaces(agentRunResult.filesChanged ?? []);
 
   const required = workPacket.tasteGateRequired || affectedSurfaces.length > 0;
 
@@ -42,6 +42,9 @@ export function checkTasteGate(options: CheckTasteGateOptions): TasteGateRequest
 }
 
 export function detectAffectedSurfaces(changedFiles: string[]): string[] {
+  // Defensive: a malformed candidate may arrive with a missing/non-array filesChanged. Never throw — return
+  // no affected surfaces so the merge court reaches its "no substantive diff" rejection instead of crashing.
+  if (!Array.isArray(changedFiles)) return [];
   const triggers = [
     /src\/cli\/commands\//,
     /src\/cli\/.*help/,

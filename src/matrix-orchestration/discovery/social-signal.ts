@@ -150,6 +150,8 @@ export async function captureSocialSignal(
       stage: 'social_signal',
       competitorCount: universe.entries.length,
       mentionsCollected: report.mentions.length,
+      // Record which source tiers were requested — auditability for the enabled path.
+      sourcesRequested: sources,
     },
   });
   return report;
