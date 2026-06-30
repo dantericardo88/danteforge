@@ -254,10 +254,16 @@ async function runDimUniverse(
         return null;
       }
 
-      const timeoutPromise = new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs),
-      );
-      const result = await Promise.race([_run(adapter, { lease }), timeoutPromise]);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`Timeout after ${timeoutMs}ms`)), timeoutMs);
+      });
+      let result;
+      try {
+        result = await Promise.race([_run(adapter, { lease }), timeoutPromise]);
+      } finally {
+        clearTimeout(timer); // never leak the timer — a live timer holds the event loop open (CI hang)
+      }
       const output = result.output ?? '';
 
       const valid = output.length >= 300 && hasMinimumSources(output);

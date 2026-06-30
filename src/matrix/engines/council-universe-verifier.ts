@@ -249,10 +249,16 @@ export async function runSingleDimVerification(opts: VerificationOptions): Promi
       return { verdict: 'ERROR', reason: `${verifier} adapter not available`, issues: [], suggestedFixes: [] };
     }
 
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(() => reject(new Error(`Verification timeout after ${timeoutMs}ms`)), timeoutMs),
-    );
-    const result = await Promise.race([_run(adapter, { lease }), timeoutPromise]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Verification timeout after ${timeoutMs}ms`)), timeoutMs);
+    });
+    let result;
+    try {
+      result = await Promise.race([_run(adapter, { lease }), timeoutPromise]);
+    } finally {
+      clearTimeout(timer); // never leak the timer — a live timer holds the event loop open (CI hang)
+    }
     const parsed = parseVerificationOutput(result.output ?? '');
     logger.info(`[universe-verify] ${dimId}: ${parsed.verdict}${parsed.issues.length ? ` (${parsed.issues.length} issues)` : ''}`);
     return parsed;

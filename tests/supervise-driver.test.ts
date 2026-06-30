@@ -32,11 +32,21 @@ describe('summarizeEngineRun — pure exit→summary mapper', () => {
   });
 });
 
-describe('engineArgs — engine → CLI argv', () => {
-  test('maps each engine', () => {
-    assert.deepEqual(engineArgs('autoforge', 8), ['autoforge', '--auto', '--target', '8']);
-    assert.deepEqual(engineArgs('crusade', 9), ['crusade', '--target', '9']);
-    assert.deepEqual(engineArgs('frontier', 8.5), ['ascend', '--frontier', '--target', '8.5']);
+describe('engineArgs — engine → VALID CLI argv', () => {
+  test('maps each engine to argv its real command accepts', () => {
+    assert.deepEqual(engineArgs('autoforge', 8, 'g'), ['autoforge', '--auto', '--target', '8']);
+    assert.deepEqual(engineArgs('autoforge', 8, 'g', 3), ['autoforge', '--auto', '--target', '8', '--best-of-n', '3']);
+    // crusade REQUIRES --goal and has no --best-of-n
+    assert.deepEqual(engineArgs('crusade', 9, 'harden security'), ['crusade', '--goal', 'harden security', '--target', '9']);
+    assert.ok(!engineArgs('crusade', 9, 'g', 3).includes('--best-of-n'), 'crusade has no --best-of-n flag');
+    // frontier driver is `frontier --drive`, NOT `ascend --frontier`
+    assert.deepEqual(engineArgs('frontier', 8.5, 'g'), ['frontier', '--drive', '--target', '8.5']);
+  });
+
+  test('crusade always supplies a non-empty --goal (it is a requiredOption)', () => {
+    const argv = engineArgs('crusade', 8, '');
+    const gi = argv.indexOf('--goal');
+    assert.ok(gi >= 0 && (argv[gi + 1]?.length ?? 0) > 0, 'crusade argv must carry a non-empty --goal');
   });
 });
 

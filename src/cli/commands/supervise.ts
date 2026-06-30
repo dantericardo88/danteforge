@@ -40,14 +40,22 @@ export interface SuperviseOptions {
 
 const ENGINES = new Set(['autoforge', 'crusade', 'frontier']);
 
-/** Map an engine name + target (+ optional best-of-N) to the CLI argv that runs its inner loop once. */
-export function engineArgs(engine: string, target: number, bestOfN?: number): string[] {
-  const bo = bestOfN && bestOfN > 1 ? ['--best-of-n', String(bestOfN)] : [];
+/** Map an engine + target (+ goal, + optional best-of-N) to a VALID CLI argv for that engine's real command.
+ *  Verified against the actual command definitions: crusade REQUIRES --goal and has no --best-of-n; the
+ *  frontier driver is `frontier --drive` (NOT `ascend --frontier`, which has no such flag); only autoforge
+ *  accepts --best-of-n. Emitting flags a command rejects makes the child exit 1 and the run a no-op. */
+export function engineArgs(engine: string, target: number, goal: string, bestOfN?: number): string[] {
+  const t = String(target);
   switch (engine) {
-    case 'crusade': return ['crusade', '--target', String(target), ...bo];
-    case 'frontier': return ['ascend', '--frontier', '--target', String(target), ...bo];
+    case 'crusade':
+      return ['crusade', '--goal', goal || 'Drive the project toward the target score', '--target', t];
+    case 'frontier':
+      return ['frontier', '--drive', '--target', t];
     case 'autoforge':
-    default: return ['autoforge', '--auto', '--target', String(target), ...bo];
+    default: {
+      const bo = bestOfN && bestOfN > 1 ? ['--best-of-n', String(bestOfN)] : [];
+      return ['autoforge', '--auto', '--target', t, ...bo];
+    }
   }
 }
 
@@ -144,7 +152,7 @@ export async function supervise(goalArg: string | undefined, options: SuperviseO
   const posture: Posture = options.posture ?? 'tiered';
   if (!ENGINES.has(engine)) { logger.error(`[supervise] unknown engine "${engine}". Use: autoforge | crusade | frontier`); process.exitCode = 1; return; }
 
-  const argv = engineArgs(engine, target, options.bestOfN);
+  const argv = engineArgs(engine, target, goal, options.bestOfN);
   if (options.dryRun) {
     logger.info(`[supervise] DRY RUN — would loop: ${engine} → \`danteforge ${argv.join(' ')}\` (posture=${posture}, target=${target})`);
     logger.info('[supervise] would auto-restart transient stops; pause only on ceiling/policy/budget.');

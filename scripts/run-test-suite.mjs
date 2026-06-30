@@ -92,6 +92,10 @@ function runLane(lane) {
       ...(lane.nodeV8Flags ?? []),
       tsxCliPath,
       '--test',
+      // Force process exit after the run completes so a leaked timer/handle in any test can never wedge the
+      // lane (and thus `npm test`) indefinitely — the systemic Windows-stall root cause. Safe: results are
+      // already reported by the time the runner finishes.
+      '--test-force-exit',
       `--test-concurrency=${lane.concurrency}`,
       ...(skipPatterns ? [`--test-skip-pattern=${skipPatterns}`] : []),
       ...lane.nodeArgs,

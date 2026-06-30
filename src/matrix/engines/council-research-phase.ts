@@ -217,10 +217,15 @@ async function runDimResearch(
         return { output: '', exitCode: 1, filesChanged: [] } as unknown as AgentRunResult;
       }
     }
-    const timeoutPromise = new Promise<AgentRunResult>((_, reject) =>
-      setTimeout(() => reject(new Error(`Research timeout after ${timeoutMs}ms for ${target.dimId}`)), timeoutMs),
-    );
-    return await Promise.race([_run(adapter, { lease }), timeoutPromise]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<AgentRunResult>((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`Research timeout after ${timeoutMs}ms for ${target.dimId}`)), timeoutMs);
+    });
+    try {
+      return await Promise.race([_run(adapter, { lease }), timeoutPromise]);
+    } finally {
+      clearTimeout(timer); // never leak the backstop timer — a live timer holds the event loop open (CI hang)
+    }
   } catch (err) {
     logger.verbose(`[research-phase] ${memberId}/${target.dimId} failed: ${String(err).split('\n')[0]}`);
     return { output: '', exitCode: 1, filesChanged: [] } as unknown as AgentRunResult;

@@ -2,7 +2,7 @@
 
 ## What This Is
 
-DanteForge is an agentic development CLI (v0.5.0) that fuses battle-tested patterns from leading open-source tools into one opinionated workflow: structured specs, execution waves, multi-agent orchestration, skills, hard gates, TDD enforcement, Figma UX refinement via MCP, git worktree isolation, guided tech stack decisions, manual MCP self-healing, and self-improving lessons.
+DanteForge is an agentic development CLI (v0.18.1) that fuses battle-tested patterns from leading open-source tools into one opinionated workflow: structured specs, execution waves, multi-agent orchestration, skills, hard gates, TDD enforcement, Figma UX refinement via MCP, git worktree isolation, guided tech stack decisions, manual MCP self-healing, and self-improving lessons.
 
 ## Build & Test
 
